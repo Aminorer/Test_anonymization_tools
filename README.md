@@ -273,7 +273,7 @@ SESSION_EXPIRE_MINUTES=30
 MAX_FILE_SIZE=52428800  # 50MB
 
 # Frontend
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8000/api
 ```
 
 ### Personnalisation des entités

@@ -20,7 +20,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - REACT_APP_API_URL=http://localhost:9991
+      - VITE_API_URL=http://localhost:9991/api
     command: npm run dev
 
   redis:
