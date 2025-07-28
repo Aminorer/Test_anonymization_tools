@@ -231,8 +231,9 @@ docker-compose logs -f frontend
 
 ### Tests backend
 ```bash
-cd backend
-python -m pytest tests/ -v
+# depuis la racine du projet
+pip install -r backend/requirements.txt
+python -m pytest backend/tests -v
 ```
 
 ### Tests frontend
