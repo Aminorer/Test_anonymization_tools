@@ -1,0 +1,90 @@
+/* App.css - Styles spécifiques à l'application */
+
+.App {
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Animations personnalisées */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Style pour les champs de saisie */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  ring-width: 2px;
+  ring-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* Amélioration des scrollbars */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Styles pour le drag and drop */
+.dropzone-active {
+  background-color: #eff6ff;
+  border-color: #3b82f6;
+}
+
+/* Styles pour les entités par type */
+.entity-personne {
+  border-left: 4px solid #3b82f6;
+}
+
+.entity-adresse {
+  border-left: 4px solid #8b5cf6;
+}
+
+.entity-telephone {
+  border-left: 4px solid #f59e0b;
+}
+
+.entity-email {
+  border-left: 4px solid #10b981;
+}
+
+.entity-securite-sociale {
+  border-left: 4px solid #ef4444;
+}
+
+.entity-organisation {
+  border-left: 4px solid #06b6d4;
+}
+
+.entity-siret-siren {
+  border-left: 4px solid #f97316;
+}
+
+.entity-autre {
+  border-left: 4px solid #6b7280;
+}

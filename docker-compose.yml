@@ -1,0 +1,35 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "9991:8000"  # Port très très haut
+    volumes:
+      - ./backend:/app
+    environment:
+      - PYTHONPATH=/app
+      - ENVIRONMENT=development
+    depends_on:
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "9992:3000"  # Port très très haut
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:9991
+    command: npm run dev
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "9993:6379"  # Port très très haut
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
