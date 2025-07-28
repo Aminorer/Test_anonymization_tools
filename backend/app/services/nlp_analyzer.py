@@ -3,7 +3,12 @@ import re
 import requests
 import json
 from typing import List, Dict, Set, Tuple
-from app.models.entities import Entity, EntityTypeEnum, ENTITY_TYPES
+from app.models.entities import (
+    Entity,
+    EntityTypeEnum,
+    ENTITY_TYPES,
+    STRUCTURED_ENTITY_TYPES,
+)
 from app.core.config import settings
 import logging
 from dataclasses import dataclass
@@ -263,8 +268,9 @@ RÉPONDS UNIQUEMENT en JSON strict, sans commentaire :
         """Extraction regex optimisée (le plus fiable)"""
         candidates = []
         
-        for entity_type, config in ENTITY_TYPES.items():
-            for pattern in config['patterns']:
+        for entity_type, config in STRUCTURED_ENTITY_TYPES.items():
+            patterns = config.get('patterns', [])
+            for pattern in patterns:
                 matches = re.finditer(pattern, text, re.IGNORECASE | re.MULTILINE)
                 
                 for match in matches:
