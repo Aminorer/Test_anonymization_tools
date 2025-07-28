@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://frontend:3000"
+        "http://frontend:3000",
+        "http://localhost:9992",
+        "http://127.0.0.1:9992"
     ]
     
     ALLOWED_HOSTS: List[str] = [
@@ -27,6 +29,11 @@ class Settings(BaseSettings):
     # Session settings
     SESSION_EXPIRE_MINUTES: int = 30
     MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
+    
+    # Ollama settings (NOUVEAU)
+    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://ollama:11434")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
+    OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "60"))
     
     # RGPD compliance settings
     RGPD_CONFIG: dict = {

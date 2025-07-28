@@ -2,20 +2,24 @@ services:
   backend:
     build: ./backend
     ports:
-      - "9991:8000"  # Port très très haut
+      - "9991:8000"
     volumes:
       - ./backend:/app
     environment:
       - PYTHONPATH=/app
       - ENVIRONMENT=development
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=mistral:7b-instruct
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
+      - ollama
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build: ./frontend
     ports:
-      - "9992:3000"  # Port très très haut
+      - "9992:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -26,10 +30,26 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "9993:6379"  # Port très très haut
+      - "9993:6379"
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 volumes:
   redis_data:
+  ollama_data:

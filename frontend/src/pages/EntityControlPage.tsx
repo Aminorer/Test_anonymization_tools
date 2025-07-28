@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAnonymizerStore } from '../stores/anonymizerStore';
 import { generateAnonymizedDocument, addCustomEntity } from '../services/api';
-import { ENTITY_TYPES_CONFIG, EntityType, CustomEntity } from '../types/entities';
+import { ENTITY_TYPES_CONFIG, EntityType, CustomEntity, Entity } from '../types/entities';
 
 const EntityControlPage: React.FC = () => {
   const navigate = useNavigate();
@@ -35,6 +35,11 @@ const EntityControlPage: React.FC = () => {
     replacement: ''
   });
   const [showPreview, setShowPreview] = useState(false);
+  const [sourceFilters, setSourceFilters] = useState({
+    regex_validated: true,
+    llm_ollama: true,
+    manual: true
+  });
 
   // Rediriger si pas de session
   useEffect(() => {
@@ -46,6 +51,56 @@ const EntityControlPage: React.FC = () => {
   const selectedEntities = getSelectedEntities();
   const selectedCount = getSelectedCount();
   const groupedEntities = getEntitiesByType();
+
+  const toggleSourceFilter = (source: string) => {
+    setSourceFilters(prev => ({
+      ...prev,
+      [source]: !prev[source]
+    }));
+  };
+
+  const getEntitiesBySource = (source: string) => {
+    return entities.filter(entity => entity.source === source);
+  };
+
+  const getFilteredEntities = () => {
+    return entities.filter(entity => sourceFilters[entity.source as keyof typeof sourceFilters]);
+  };
+
+  const getFilteredGroupedEntities = () => {
+    const filteredEntities = getFilteredEntities();
+    const grouped: Record<string, Entity[]> = {};
+    
+    filteredEntities.forEach((entity) => {
+      const type = entity.type;
+      if (!grouped[type]) {
+        grouped[type] = [];
+      }
+      grouped[type].push(entity);
+    });
+    
+    return grouped;
+  };
+
+  const getSourceLabel = (source: string) => {
+    const labels = {
+      'regex_validated': 'Regex Validé',
+      'llm_ollama': 'LLM Ollama',
+      'manual': 'Manuel'
+    };
+    return labels[source as keyof typeof labels] || source;
+  };
+
+  const getSourceBadgeStyle = (source: string) => {
+    const styles = {
+      'regex_validated': 'bg-green-100 text-green-700',
+      'llm_ollama': 'bg-purple-100 text-purple-700',
+      'manual': 'bg-blue-100 text-blue-700'
+    };
+    return styles[source as keyof typeof styles] || 'bg-gray-100 text-gray-700';
+  };
+
+  const filteredEntities = getFilteredEntities();
 
   const handleSelectAll = () => {
     selectAll();
@@ -156,7 +211,7 @@ const EntityControlPage: React.FC = () => {
               <div>
                 <h1 className="text-2xl font-bold">{filename}</h1>
                 <p className="text-gray-600">
-                  {entities.length} entités détectées • {selectedCount}/{entities.length} sélectionnées
+                  {entities.length} entités détectées • {filteredEntities.length} affichées • {selectedCount}/{entities.length} sélectionnées
                 </p>
               </div>
             </div>
@@ -191,6 +246,58 @@ const EntityControlPage: React.FC = () => {
           {/* Colonne principale : Liste des entités */}
           <div className="lg:col-span-2 space-y-6">
             
+            {/* Filtres par source */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                🔧 Filtrer par source de détection
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sourceFilters.regex_validated}
+                    onChange={() => toggleSourceFilter('regex_validated')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm font-medium">✅ Regex validé</span>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                    {getEntitiesBySource('regex_validated').length}
+                  </span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sourceFilters.llm_ollama}
+                    onChange={() => toggleSourceFilter('llm_ollama')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm font-medium">🧠 LLM Ollama</span>
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                    {getEntitiesBySource('llm_ollama').length}
+                  </span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sourceFilters.manual}
+                    onChange={() => toggleSourceFilter('manual')}
+                    className="w-4 h-4 text-blue-600"
+                  />
+                  <span className="text-sm font-medium">✋ Manuelles</span>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                    {getEntitiesBySource('manual').length}
+                  </span>
+                </label>
+              </div>
+              <div className="text-xs text-gray-500 mt-2 space-y-1">
+                <p>✅ <strong>Regex validé</strong> : Données structurées fiables (téléphone, email, SIRET, etc.)</p>
+                <p>🧠 <strong>LLM Ollama</strong> : Entités complexes analysées par IA locale (noms, organisations)</p>
+                <p>💡 Mode "Standard" = Regex seul | Mode "Approfondi" = Regex + LLM</p>
+              </div>
+            </div>
+
             {/* Affichage d'erreur */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
@@ -226,7 +333,7 @@ const EntityControlPage: React.FC = () => {
               </div>
               
               <div className="max-h-96 overflow-y-auto">
-                {Object.entries(groupedEntities).map(([type, typeEntities]) => {
+                {Object.entries(getFilteredGroupedEntities()).map(([type, typeEntities]) => {
                   const config = getEntityTypeConfig(type);
                   
                   return (
@@ -268,8 +375,8 @@ const EntityControlPage: React.FC = () => {
                                       <><AlertCircle size={12} className="text-red-600" /> Format suspect</>
                                     )}
                                   </span>
-                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                    {entity.source}
+                                  <span className={`text-xs px-2 py-1 rounded ${getSourceBadgeStyle(entity.source)}`}>
+                                    {getSourceLabel(entity.source)}
                                   </span>
                                 </div>
                               </div>

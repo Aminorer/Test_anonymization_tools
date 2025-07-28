@@ -30,7 +30,7 @@ export const analyzeDocument = async (
   formData.append('file', file);
   formData.append('mode', mode);
 
-  const response = await api.post<AnalyzeResponse>('/analyze', formData, {
+  const response = await api.post<AnalyzeResponse>('/api/analyze', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -49,7 +49,7 @@ export const addCustomEntity = async (
   formData.append('entity_type', entity.entity_type);
   formData.append('replacement', entity.replacement);
 
-  const response = await api.post('/add-entity', formData);
+  const response = await api.post('/api/add-entity', formData);
   return response.data;
 };
 
@@ -61,7 +61,7 @@ export const generateAnonymizedDocument = async (
   formData.append('session_id', sessionId);
   formData.append('selected_entities', JSON.stringify(selectedEntities));
 
-  const response = await api.post('/generate', formData, {
+  const response = await api.post('/api/generate', formData, {
     responseType: 'blob',
   });
 
@@ -69,12 +69,12 @@ export const generateAnonymizedDocument = async (
 };
 
 export const getSessionInfo = async (sessionId: string) => {
-  const response = await api.get(`/session/${sessionId}`);
+  const response = await api.get(`/api/session/${sessionId}`);
   return response.data;
 };
 
 export const getApplicationStats = async () => {
-  const response = await api.get('/stats');
+  const response = await api.get('/api/stats');
   return response.data;
 };
 

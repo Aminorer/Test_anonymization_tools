@@ -76,6 +76,8 @@ async def analyze_document(
                 "text": entity.text,
                 "type": entity.type.value,
                 "subtype": getattr(entity, 'subtype', None),
+                "start": entity.start,
+                "end": entity.end,
                 "occurrences": entity.occurrences,
                 "confidence": entity.confidence,
                 "selected": True,  # Par défaut sélectionné

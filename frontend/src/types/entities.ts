@@ -6,7 +6,7 @@ export enum EntityType {
   SECURITE_SOCIALE = "NUMÉRO DE SÉCURITÉ SOCIALE",
   ORGANISATION = "ORGANISATION",
   SIRET_SIREN = "SIRET/SIREN",
-  AUTRE = "AUTRE"
+  REFERENCE_JURIDIQUE = "RÉFÉRENCE JURIDIQUE"
 }
 
 export interface Entity {
@@ -14,6 +14,8 @@ export interface Entity {
   text: string;
   type: EntityType;
   subtype?: string;
+  start?: number;
+  end?: number;
   occurrences: number;
   confidence: number;
   selected: boolean;
@@ -86,9 +88,9 @@ export const ENTITY_TYPES_CONFIG = {
       'NUMERO_REGISTRE'
     ]
   },
-  'AUTRE': {
+  'RÉFÉRENCE JURIDIQUE': {
     color: '#6b7280',
-    icon: '❓',
+    icon: '⚖️',
     default_replacement: 'REFERENCE_X'
   }
 };

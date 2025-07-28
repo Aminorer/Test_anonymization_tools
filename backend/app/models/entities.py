@@ -12,7 +12,7 @@ class EntityTypeEnum(str, Enum):
     SECURITE_SOCIALE = "NUMÉRO DE SÉCURITÉ SOCIALE"
     ORGANISATION = "ORGANISATION"
     SIRET_SIREN = "SIRET/SIREN"
-    AUTRE = "AUTRE"
+    REFERENCE_JURIDIQUE = "RÉFÉRENCE JURIDIQUE"
 
 class Entity(BaseModel):
     id: str = None
@@ -67,27 +67,8 @@ class AuditLog(BaseModel):
     entities_anonymized: int
     replacement_summary: List[Dict[str, Any]]
 
-# Configuration des types d'entités
-ENTITY_TYPES = {
-    'PERSONNE': {
-        'patterns': [
-            r'Ma?ître\s+([A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+(?:\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+)*)',
-            r'(?:Monsieur|Madame|M\.|Mme)\s+([A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+(?:\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+)*)',
-            r'\b([A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ]{2,}(?:\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ]{2,})+)\b'
-        ],
-        'default_replacement': 'PERSONNE_X',
-        'color': '#3b82f6',
-        'icon': '👤'
-    },
-    'ADRESSE': {
-        'patterns': [
-            r'\d+(?:\s+(?:bis|ter))?\s+(?:rue|avenue|boulevard|place|impasse)\s+[^,\n.]{5,}(?:\s+\d{5}\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+)?',
-            r'\d{5}\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ\s-]+'
-        ],
-        'default_replacement': 'ADRESSE_X',
-        'color': '#8b5cf6',
-        'icon': '🏠'
-    },
+# Configuration des types d'entités avec séparation Regex/LLM
+STRUCTURED_ENTITY_TYPES = {
     'NUMÉRO DE TÉLÉPHONE': {
         'patterns': [
             r'\b0[1-9](?:[\s.-]?\d{2}){4}\b',
@@ -95,28 +76,22 @@ ENTITY_TYPES = {
         ],
         'default_replacement': '0X XX XX XX XX',
         'color': '#f59e0b',
-        'icon': '📞'
+        'icon': '📞',
+        'validation': 'phone'
     },
     'EMAIL': {
         'patterns': [r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'],
         'default_replacement': 'email@anonyme.fr',
         'color': '#10b981',
-        'icon': '📧'
+        'icon': '📧',
+        'validation': 'email'
     },
     'NUMÉRO DE SÉCURITÉ SOCIALE': {
         'patterns': [r'\b[12]\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{3}\s?\d{3}\s?\d{2}\b'],
         'default_replacement': 'X XX XX XX XXX XXX XX',
         'color': '#ef4444',
-        'icon': '🆔'
-    },
-    'ORGANISATION': {
-        'patterns': [
-            r'\b([A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ\s&\'-]+)(?:\s+(?:SASU|SAS|SARL|SA|EURL|SCI))\b',
-            r'(?:Tribunal|Cour)\s+(?:de\s+(?:Grande\s+Instance|Commerce)|d\'[Aa]ppel)\s+de\s+([A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+)'
-        ],
-        'default_replacement': 'ORGANISATION_X',
-        'color': '#06b6d4',
-        'icon': '🏢'
+        'icon': '🆔',
+        'validation': 'social_security'
     },
     'SIRET/SIREN': {
         'patterns': [
@@ -130,7 +105,7 @@ ENTITY_TYPES = {
         'default_replacement': 'SIRET_X',
         'color': '#f97316',
         'icon': '🏭',
-        'validation_required': True,
+        'validation': 'siret_siren',
         'replacement_options': [
             'SIRET_MASQUE',
             'SIREN_MASQUE', 
@@ -139,13 +114,43 @@ ENTITY_TYPES = {
             'NUMERO_REGISTRE'
         ]
     },
-    'AUTRE': {
+    'ADRESSE': {
+        'patterns': [
+            r'\d+(?:\s+(?:bis|ter))?\s+(?:rue|avenue|boulevard|place|impasse|allée|square|passage)\s+[^,\n.]{5,}(?:\s+\d{5}\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][a-zàáâäçéèêëïîôöùúûüñ-]+)?',
+            r'\d{5}\s+[A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ][A-ZÀÁÂÄÇÉÈÊËÏÎÔÖÙÚÛÜÑ\s-]+'
+        ],
+        'default_replacement': 'ADRESSE_X',
+        'color': '#8b5cf6',
+        'icon': '🏠',
+        'validation': 'address'
+    },
+    'RÉFÉRENCE JURIDIQUE': {
         'patterns': [
             r'N°\s?RG\s?\d+[\/\-\s]*\d*',
-            r'(?:Dossier|Affaire)\s+n°\s?\d+[\/\-\s]*\d*'
+            r'(?:Dossier|Affaire)\s+n°\s?\d+[\/\-\s]*\d*',
+            r'Article\s+\d+(?:\s+du\s+Code\s+[a-zA-Z\s]+)?',
+            r'Arrêt\s+n°\s?\d+[\/\-\s]*\d*'
         ],
         'default_replacement': 'REFERENCE_X',
         'color': '#6b7280',
-        'icon': '❓'
+        'icon': '⚖️',
+        'validation': 'reference'
     }
 }
+
+# Types d'entités pour LLM (entités complexes)
+LLM_ENTITY_TYPES = {
+    'PERSONNE': {
+        'default_replacement': 'PERSONNE_X',
+        'color': '#3b82f6',
+        'icon': '👤'
+    },
+    'ORGANISATION': {
+        'default_replacement': 'ORGANISATION_X',
+        'color': '#06b6d4',
+        'icon': '🏢'
+    }
+}
+
+# Combinaison pour compatibilité
+ENTITY_TYPES = {**STRUCTURED_ENTITY_TYPES, **LLM_ENTITY_TYPES}
