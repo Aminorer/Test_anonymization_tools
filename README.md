@@ -58,6 +58,13 @@ docker-compose up -d --build
 docker-compose down
 ```
 
+### 5. Vérification de l'installation (Windows)
+Des scripts PowerShell sont fournis pour initialiser les modèles et vérifier les services :
+```powershell
+pwsh -File scripts/init-ollama.ps1    # Téléchargement du modèle Ollama
+pwsh -File scripts/health-check.ps1   # Vérification des conteneurs
+```
+
 ## 📋 Guide d'utilisation
 
 ### Étape 1 : Upload du document
