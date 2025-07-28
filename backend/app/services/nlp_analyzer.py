@@ -1,6 +1,6 @@
 import spacy
 import re
-import requests
+import httpx
 import json
 from typing import List, Dict, Set, Tuple
 from app.models.entities import (
@@ -47,7 +47,7 @@ class EnhancedNLPAnalyzer:
     def _test_ollama_connection(self):
         """Test la connexion à Ollama"""
         try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            response = httpx.get(f"{self.ollama_url}/api/tags", timeout=5.0)
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 model_names = [m['name'] for m in models]
@@ -152,7 +152,7 @@ RÉPONDS UNIQUEMENT en JSON strict, sans commentaire :
 ]"""
 
         try:
-            response = requests.post(
+            response = httpx.post(
                 f"{self.ollama_url}/api/generate",
                 json={
                     "model": self.ollama_model,
@@ -165,17 +165,16 @@ RÉPONDS UNIQUEMENT en JSON strict, sans commentaire :
                         "repeat_penalty": 1.1
                     }
                 },
-                timeout=self.ollama_timeout
+                timeout=self.ollama_timeout,
             )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return self._parse_ollama_response(result.get('response', ''), chunk, chunk_index)
-            else:
-                logger.error(f"Erreur Ollama HTTP {response.status_code}: {response.text}")
-            
-        except requests.exceptions.Timeout:
+            response.raise_for_status()
+            result = response.json()
+            return self._parse_ollama_response(result.get('response', ''), chunk, chunk_index)
+
+        except httpx.TimeoutException:
             logger.error(f"Timeout Ollama chunk {chunk_index}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Erreur Ollama HTTP {e.response.status_code}: {e.response.text}")
         except Exception as e:
             logger.error(f"Erreur requête Ollama chunk {chunk_index}: {e}")
         

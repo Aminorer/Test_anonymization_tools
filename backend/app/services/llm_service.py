@@ -1,4 +1,4 @@
-import requests
+import httpx
 import json
 import re
 import os
@@ -84,7 +84,7 @@ class LLMService:
         prompt = self._build_extraction_prompt(chunk)
         
         try:
-            response = requests.post(
+            response = httpx.post(
                 f"{self.ollama_url}/api/generate",
                 json={
                     "model": self.model,
@@ -96,16 +96,18 @@ class LLMService:
                         "num_predict": 1000
                     }
                 },
-                timeout=30
+                timeout=300.0,
             )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return self._parse_llm_response(result['response'], chunk, offset)
-            else:
-                logger.error(f"Erreur LLM: {response.status_code}")
-                return []
-                
+            response.raise_for_status()
+            result = response.json()
+            return self._parse_llm_response(result.get("response", ""), chunk, offset)
+
+        except httpx.TimeoutException:
+            logger.error("Timeout lors de l'appel LLM")
+            return []
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Erreur LLM HTTP {e.response.status_code}: {e.response.text}")
+            return []
         except Exception as e:
             logger.error(f"Erreur lors de l'appel LLM: {e}")
             return []
