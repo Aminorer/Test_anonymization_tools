@@ -50,7 +50,8 @@ docker-compose up -d --build
 ### 3. Accès aux services
 - **Frontend** : http://localhost:3000
 - **API Backend** : http://localhost:8000
-- **Documentation API** : http://localhost:8000/docs
+  - Endpoint principal : `POST /api/analyze` (alias `/analyze`)
+  - Documentation : http://localhost:8000/docs
 - **Redis** : localhost:6379
 
 ### 4. Arrêt des services

@@ -31,10 +31,20 @@ app.add_middleware(
 )
 
 # Include routers
+# Main API routes under /api
 app.include_router(
     anonymizer.router,
     prefix="/api",
     tags=["anonymizer"]
+)
+
+# Compatibility routes without the /api prefix
+# Allowing clients to call endpoints like /analyze directly
+app.include_router(
+    anonymizer.router,
+    prefix="",
+    tags=["anonymizer"],
+    include_in_schema=False
 )
 
 @app.get("/")
