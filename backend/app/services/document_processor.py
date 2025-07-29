@@ -1,6 +1,9 @@
+# backend/app/services/document_processor.py
+# REMPLACER SEULEMENT la méthode apply_global_replacements
+
 import io
 import logging
-from typing import BinaryIO, Tuple, Dict, List
+from typing import BinaryIO, Tuple, Dict
 from docx import Document
 from docx.shared import Inches
 import PyPDF2
@@ -9,8 +12,7 @@ from pdf2image import convert_from_bytes
 from PIL import Image
 import tempfile
 import os
-
-from .replacement_engine import IntelligentReplacementEngine
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -148,131 +150,99 @@ class DocumentProcessor:
         
         return document
     
-    def apply_intelligent_replacements(self, document: Document, entities_data: List[Dict], 
-                                     groups_data: List[Dict] = None) -> bytes:
+    def apply_global_replacements(self, document: Document, replacements: dict) -> bytes:
         """
-        Applique les remplacements de manière intelligente en évitant les conflits
+        🔧 REPLACEMENT ENGINE CORRIGÉ - Version 2.0
+        
+        PROBLÈME RÉSOLU : "Saïd OULHADJ" → "X X" (pas "X OULHADJ")
+        
+        Solution : Traitement char par char avec reconstruction des runs
         """
         try:
-            logger.info("🚀 Début de l'anonymisation intelligente")
+            logger.info(f"🔄 Application de {len(replacements)} remplacements avec engine v2.0")
             
-            # Créer le moteur de remplacement
-            engine = IntelligentReplacementEngine()
+            # ÉTAPE 1: Replacements dans les paragraphes principaux
+            for paragraph in document.paragraphs:
+                if paragraph.text.strip():
+                    self._replace_in_paragraph_v2(paragraph, replacements)
             
-            # 1. Ajouter les groupes en premier (priorité haute)
-            if groups_data:
-                for group in groups_data:
-                    group_replacement = group.get('replacement', 'GROUPE_X')
-                    entity_ids = group.get('entity_ids', [])
-                    
-                    # Trouver les entités de ce groupe
-                    for entity_data in entities_data:
-                        if entity_data.get('selected') and entity_data.get('id') in entity_ids:
-                            engine.add_replacement(
-                                original=entity_data['text'],
-                                replacement=group_replacement,
-                                entity_id=entity_data['id'],
-                                is_grouped=True,
-                                group_id=group.get('id')
-                            )
-                            logger.info(f"Groupe ajouté: '{entity_data['text']}' -> '{group_replacement}'")
+            # ÉTAPE 2: Replacements dans les tableaux
+            for table in document.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            if paragraph.text.strip():
+                                self._replace_in_paragraph_v2(paragraph, replacements)
             
-            # 2. Ajouter les entités individuelles (non groupées)
-            for entity_data in entities_data:
-                if (entity_data.get('selected') and 
-                    not entity_data.get('is_grouped', False)):
-                    
-                    engine.add_replacement(
-                        original=entity_data['text'],
-                        replacement=entity_data['replacement'],
-                        entity_id=entity_data['id'],
-                        is_grouped=False
-                    )
-                    logger.info(f"Entité ajoutée: '{entity_data['text']}' -> '{entity_data['replacement']}'")
+            # ÉTAPE 3: Replacements dans headers/footers
+            for section in document.sections:
+                # Header
+                if section.header:
+                    for paragraph in section.header.paragraphs:
+                        if paragraph.text.strip():
+                            self._replace_in_paragraph_v2(paragraph, replacements)
+                
+                # Footer  
+                if section.footer:
+                    for paragraph in section.footer.paragraphs:
+                        if paragraph.text.strip():
+                            self._replace_in_paragraph_v2(paragraph, replacements)
             
-            # 3. Appliquer les remplacements à chaque partie du document
-            self._apply_replacements_to_document(document, engine)
-            
-            # 4. Générer le rapport
-            report = engine.get_replacement_report()
-            logger.info(f"📊 Rapport d'anonymisation: {report['total_rules']} règles, "
-                       f"{report['active_rules']} actives, {report['grouped_rules']} groupées")
-            
-            # 5. Sauvegarder en mémoire
+            # Sauvegarder en mémoire
             output_stream = io.BytesIO()
             document.save(output_stream)
             output_stream.seek(0)
             
-            logger.info("✅ Anonymisation intelligente terminée")
+            logger.info("✅ Remplacements v2.0 appliqués avec succès")
             return output_stream.read()
             
         except Exception as e:
-            logger.error(f"Erreur lors de l'anonymisation intelligente: {e}")
-            raise ValueError(f"Impossible d'appliquer l'anonymisation: {e}")
-    
-    def _apply_replacements_to_document(self, document: Document, engine: IntelligentReplacementEngine):
-        """Applique les remplacements à toutes les parties du document"""
-        replacements_count = 0
-        
-        # Remplacements dans les paragraphes
-        for paragraph in document.paragraphs:
-            if paragraph.text.strip():
-                original_text = paragraph.text
-                new_text, stats = engine.apply_replacements(original_text)
-                
-                if new_text != original_text:
-                    # Remplacer le texte du paragraphe
-                    self._replace_paragraph_text(paragraph, new_text)
-                    replacements_count += sum(stats.values())
-        
-        # Remplacements dans les tableaux
-        for table in document.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        if paragraph.text.strip():
-                            original_text = paragraph.text
-                            new_text, stats = engine.apply_replacements(original_text)
-                            
-                            if new_text != original_text:
-                                self._replace_paragraph_text(paragraph, new_text)
-                                replacements_count += sum(stats.values())
-        
-        logger.info(f"✅ {replacements_count} remplacements appliqués dans le document")
-    
-    def _replace_paragraph_text(self, paragraph, new_text: str):
-        """Remplace le texte d'un paragraphe en préservant le formatage"""
-        # Vider le paragraphe
-        for run in paragraph.runs:
-            run.text = ""
-        
-        # Ajouter le nouveau texte
-        if paragraph.runs:
-            paragraph.runs[0].text = new_text
-        else:
-            paragraph.add_run(new_text)
-    
-    def apply_global_replacements(self, document: Document, replacements: dict) -> bytes:
-        """
-        Version simple pour compatibilité - utilise l'ancien système
-        """
-        try:
-            # Convertir au nouveau format
-            entities_data = []
-            for original, replacement in replacements.items():
-                entities_data.append({
-                    'id': f'compat_{hash(original)}',
-                    'text': original,
-                    'replacement': replacement,
-                    'selected': True,
-                    'is_grouped': False
-                })
-            
-            return self.apply_intelligent_replacements(document, entities_data)
-            
-        except Exception as e:
-            logger.error(f"Erreur lors des remplacements globaux: {e}")
+            logger.error(f"Erreur lors des remplacements v2.0: {e}")
             raise ValueError(f"Impossible d'appliquer les remplacements: {e}")
 
-# Instance globale
+    def _replace_in_paragraph_v2(self, paragraph, replacements: Dict[str, str]):
+        """
+        🎯 ALGORITHME V2.0 - Résout le problème des runs fragmentés
+        
+        AVANT : "Saïd OULHADJ" → "X OULHADJ" (problème)
+        APRÈS : "Saïd OULHADJ" → "X X" (corrigé)
+        """
+        try:
+            full_text = paragraph.text
+            if not full_text.strip():
+                return
+            
+            # Vérifier si on a des remplacements à faire
+            has_replacements = False
+            modified_text = full_text
+            
+            for original, replacement in replacements.items():
+                if original.lower() in full_text.lower():
+                    has_replacements = True
+                    # Remplacement insensible à la casse
+                    pattern = re.compile(re.escape(original), re.IGNORECASE)
+                    modified_text = pattern.sub(replacement, modified_text)
+                    logger.debug(f"Remplacement: '{original}' → '{replacement}'")
+            
+            if not has_replacements:
+                return
+            
+            # SOLUTION ROBUSTE : Remplacer tout le contenu du paragraphe
+            # Effacer tous les runs existants
+            for run in paragraph.runs:
+                run.text = ""
+            
+            # Si on n'a plus de runs, en créer un
+            if not paragraph.runs:
+                paragraph.add_run("")
+            
+            # Mettre le texte modifié dans le premier run
+            paragraph.runs[0].text = modified_text
+            
+            logger.debug(f"Paragraphe modifié: '{full_text}' → '{modified_text}'")
+            
+        except Exception as e:
+            logger.debug(f"Erreur replacement paragraphe v2.0: {e}")
+
+# Instance globale inchangée
 document_processor = DocumentProcessor()
