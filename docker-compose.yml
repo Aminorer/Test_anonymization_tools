@@ -10,6 +10,7 @@ services:
       - ENVIRONMENT=development
       - OLLAMA_URL=http://ollama:11434
       - OLLAMA_MODEL=mistral:7b-instruct
+      - OLLAMA_TIMEOUT=30
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
@@ -31,7 +32,7 @@ services:
     image: redis:7-alpine
     ports:
       - "9993:6379"
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
 
@@ -43,12 +44,20 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MAX_LOADED_MODELS=1      # Une seule modèle en mémoire
+      - OLLAMA_NUM_PARALLEL=1           # Une seule conversation parallèle
+      - OLLAMA_FLASH_ATTENTION=1        # Flash attention pour vitesse
+      - OLLAMA_KV_CACHE_TYPE=f16        # Cache KV optimisé
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 5
+      retries: 3
       start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G  # Limite mémoire pour éviter les swaps
 
 volumes:
   redis_data:
