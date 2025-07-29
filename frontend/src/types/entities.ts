@@ -22,12 +22,27 @@ export interface Entity {
   replacement: string;
   valid?: boolean;
   source: string;
+  // Nouvelles propriétés pour les groupes
+  groupId?: string;
+  isGrouped?: boolean;
+  groupVariants?: string[];
+}
+
+// Nouvelle interface pour les groupes d'entités
+export interface EntityGroup {
+  id: string;
+  name: string;
+  entities: Entity[];
+  replacement: string;
+  type: EntityType;
+  selected: boolean;
 }
 
 export interface EntityStats {
   total_entities: number;
   by_type: Record<string, number>;
   selected_count: number;
+  grouped_count?: number;
 }
 
 export interface AnalyzeResponse {
@@ -43,6 +58,20 @@ export interface CustomEntity {
   text: string;
   entity_type: EntityType;
   replacement: string;
+}
+
+// Nouvelles interfaces pour la modification d'entités
+export interface EntityModification {
+  entityId: string;
+  newText: string;  // Nouveau texte à anonymiser
+  newReplacement?: string;  // Nouveau remplacement (optionnel)
+}
+
+export interface GroupEntitiesRequest {
+  sessionId: string;
+  entityIds: string[];
+  groupName: string;
+  groupReplacement: string;
 }
 
 export const ENTITY_TYPES_CONFIG = {

@@ -1,6 +1,6 @@
 import io
 import logging
-from typing import BinaryIO, Tuple
+from typing import BinaryIO, Tuple, Dict, List
 from docx import Document
 from docx.shared import Inches
 import PyPDF2
@@ -9,6 +9,8 @@ from pdf2image import convert_from_bytes
 from PIL import Image
 import tempfile
 import os
+
+from .replacement_engine import IntelligentReplacementEngine
 
 logger = logging.getLogger(__name__)
 
@@ -146,38 +148,130 @@ class DocumentProcessor:
         
         return document
     
-    def apply_global_replacements(self, document: Document, replacements: dict) -> bytes:
-        """Applique les remplacements globaux dans un document DOCX"""
+    def apply_intelligent_replacements(self, document: Document, entities_data: List[Dict], 
+                                     groups_data: List[Dict] = None) -> bytes:
+        """
+        Applique les remplacements de manière intelligente en évitant les conflits
+        """
         try:
-            # Replacements dans les paragraphes
-            for paragraph in document.paragraphs:
-                for original, replacement in replacements.items():
-                    if original in paragraph.text:
-                        # Remplacer dans le texte du paragraphe
-                        for run in paragraph.runs:
-                            if original in run.text:
-                                run.text = run.text.replace(original, replacement)
+            logger.info("🚀 Début de l'anonymisation intelligente")
             
-            # Replacements dans les tableaux
-            for table in document.tables:
-                for row in table.rows:
-                    for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            for original, replacement in replacements.items():
-                                if original in paragraph.text:
-                                    for run in paragraph.runs:
-                                        if original in run.text:
-                                            run.text = run.text.replace(original, replacement)
+            # Créer le moteur de remplacement
+            engine = IntelligentReplacementEngine()
             
-            # Sauvegarder en mémoire
+            # 1. Ajouter les groupes en premier (priorité haute)
+            if groups_data:
+                for group in groups_data:
+                    group_replacement = group.get('replacement', 'GROUPE_X')
+                    entity_ids = group.get('entity_ids', [])
+                    
+                    # Trouver les entités de ce groupe
+                    for entity_data in entities_data:
+                        if entity_data.get('selected') and entity_data.get('id') in entity_ids:
+                            engine.add_replacement(
+                                original=entity_data['text'],
+                                replacement=group_replacement,
+                                entity_id=entity_data['id'],
+                                is_grouped=True,
+                                group_id=group.get('id')
+                            )
+                            logger.info(f"Groupe ajouté: '{entity_data['text']}' -> '{group_replacement}'")
+            
+            # 2. Ajouter les entités individuelles (non groupées)
+            for entity_data in entities_data:
+                if (entity_data.get('selected') and 
+                    not entity_data.get('is_grouped', False)):
+                    
+                    engine.add_replacement(
+                        original=entity_data['text'],
+                        replacement=entity_data['replacement'],
+                        entity_id=entity_data['id'],
+                        is_grouped=False
+                    )
+                    logger.info(f"Entité ajoutée: '{entity_data['text']}' -> '{entity_data['replacement']}'")
+            
+            # 3. Appliquer les remplacements à chaque partie du document
+            self._apply_replacements_to_document(document, engine)
+            
+            # 4. Générer le rapport
+            report = engine.get_replacement_report()
+            logger.info(f"📊 Rapport d'anonymisation: {report['total_rules']} règles, "
+                       f"{report['active_rules']} actives, {report['grouped_rules']} groupées")
+            
+            # 5. Sauvegarder en mémoire
             output_stream = io.BytesIO()
             document.save(output_stream)
             output_stream.seek(0)
             
+            logger.info("✅ Anonymisation intelligente terminée")
             return output_stream.read()
             
         except Exception as e:
-            logger.error(f"Erreur lors des remplacements: {e}")
+            logger.error(f"Erreur lors de l'anonymisation intelligente: {e}")
+            raise ValueError(f"Impossible d'appliquer l'anonymisation: {e}")
+    
+    def _apply_replacements_to_document(self, document: Document, engine: IntelligentReplacementEngine):
+        """Applique les remplacements à toutes les parties du document"""
+        replacements_count = 0
+        
+        # Remplacements dans les paragraphes
+        for paragraph in document.paragraphs:
+            if paragraph.text.strip():
+                original_text = paragraph.text
+                new_text, stats = engine.apply_replacements(original_text)
+                
+                if new_text != original_text:
+                    # Remplacer le texte du paragraphe
+                    self._replace_paragraph_text(paragraph, new_text)
+                    replacements_count += sum(stats.values())
+        
+        # Remplacements dans les tableaux
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        if paragraph.text.strip():
+                            original_text = paragraph.text
+                            new_text, stats = engine.apply_replacements(original_text)
+                            
+                            if new_text != original_text:
+                                self._replace_paragraph_text(paragraph, new_text)
+                                replacements_count += sum(stats.values())
+        
+        logger.info(f"✅ {replacements_count} remplacements appliqués dans le document")
+    
+    def _replace_paragraph_text(self, paragraph, new_text: str):
+        """Remplace le texte d'un paragraphe en préservant le formatage"""
+        # Vider le paragraphe
+        for run in paragraph.runs:
+            run.text = ""
+        
+        # Ajouter le nouveau texte
+        if paragraph.runs:
+            paragraph.runs[0].text = new_text
+        else:
+            paragraph.add_run(new_text)
+    
+    def apply_global_replacements(self, document: Document, replacements: dict) -> bytes:
+        """
+        Version simple pour compatibilité - utilise l'ancien système
+        """
+        try:
+            # Convertir au nouveau format
+            entities_data = []
+            for original, replacement in replacements.items():
+                entities_data.append({
+                    'id': f'compat_{hash(original)}',
+                    'text': original,
+                    'replacement': replacement,
+                    'selected': True,
+                    'is_grouped': False
+                })
+            
+            return self.apply_intelligent_replacements(document, entities_data)
+            
+        except Exception as e:
+            logger.error(f"Erreur lors des remplacements globaux: {e}")
             raise ValueError(f"Impossible d'appliquer les remplacements: {e}")
 
 # Instance globale

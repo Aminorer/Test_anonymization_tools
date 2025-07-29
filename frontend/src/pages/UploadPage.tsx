@@ -98,7 +98,7 @@ const UploadPage: React.FC = () => {
                   Analyse en cours...
                 </h3>
                 <p className="text-gray-500">
-                  {mode === 'standard' ? 'Mode standard : 5-30 secondes' : 'Mode approfondi : 30s-2 minutes'}
+                  {mode === 'standard' ? 'Mode standard : Regex uniquement (5-15s)' : 'Mode approfondi : Regex + SpaCy NER (15-45s)'}
                 </p>
               </div>
             ) : (
@@ -126,7 +126,7 @@ const UploadPage: React.FC = () => {
             )}
           </div>
 
-          {/* Options de mode */}
+          {/* Options de mode simplifiées */}
           {!isAnalyzing && (
             <div className="bg-gray-50 rounded-lg p-6 mt-6">
               <h4 className="font-semibold mb-4 flex items-center gap-2">
@@ -149,7 +149,9 @@ const UploadPage: React.FC = () => {
                       Standard (recommandé)
                     </div>
                     <div className="text-sm text-gray-600">
-                      Patterns français + IA rapide • 5-30 sec • Optimal pour la plupart des documents
+                      Patterns regex français uniquement • 5-15 sec • Données structurées fiables
+                      <br />
+                      <span className="text-xs text-blue-600">📋 Détecte : téléphones, emails, SIRET, adresses, références juridiques</span>
                     </div>
                   </div>
                 </label>
@@ -168,10 +170,23 @@ const UploadPage: React.FC = () => {
                       Approfondi
                     </div>
                     <div className="text-sm text-gray-600">
-                      Analyse renforcée + validation croisée • 30s-2min • Pour documents complexes
+                      Patterns regex + SpaCy NER • 15-45 sec • Détection avancée des noms et organisations
+                      <br />
+                      <span className="text-xs text-purple-600">🧠 Détecte en plus : noms de personnes, organisations, entreprises</span>
                     </div>
                   </div>
                 </label>
+              </div>
+              
+              <div className="mt-4 p-3 bg-blue-50 rounded border-l-4 border-blue-400">
+                <div className="text-sm text-blue-800">
+                  <strong>📌 Nouveautés :</strong>
+                  <ul className="mt-1 space-y-1">
+                    <li>✏️ <strong>Modification d'entités</strong> : Éditez le texte à anonymiser</li>
+                    <li>🔗 <strong>Groupement d'entités</strong> : Anonymisez plusieurs variantes par le même remplacement</li>
+                    <li>⚡ <strong>Sans LLM</strong> : Traitement 100% local et rapide</li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Entity, EntityStats, CustomEntity } from '../types/entities';
+import { Entity, EntityStats, CustomEntity, EntityGroup, EntityModification } from '../types/entities';
 
 interface AnonymizerState {
   // État du document
@@ -9,6 +9,7 @@ interface AnonymizerState {
   
   // État des entités
   entities: Entity[];
+  entityGroups: EntityGroup[];
   stats: EntityStats | null;
   
   // État de l'interface
@@ -17,7 +18,13 @@ interface AnonymizerState {
   isGenerating: boolean;
   error: string | null;
   
-  // Actions
+  // Nouveaux états pour l'édition
+  editingEntity: Entity | null;
+  selectedEntitiesForGrouping: string[];
+  showGroupModal: boolean;
+  showEditModal: boolean;
+  
+  // Actions de base
   setSessionData: (sessionId: string, filename: string, textPreview: string) => void;
   setEntities: (entities: Entity[], stats: EntityStats) => void;
   toggleEntity: (entityId: string) => void;
@@ -31,10 +38,25 @@ interface AnonymizerState {
   setError: (error: string | null) => void;
   reset: () => void;
   
-  // Getters calculés (corrigés)
+  // Nouvelles actions pour l'édition
+  setEditingEntity: (entity: Entity | null) => void;
+  modifyEntity: (entityId: string, newText: string, newReplacement?: string) => void;
+  
+  // Nouvelles actions pour les groupes
+  toggleEntityForGrouping: (entityId: string) => void;
+  setShowGroupModal: (show: boolean) => void;
+  setShowEditModal: (show: boolean) => void;
+  createEntityGroup: (name: string, replacement: string) => void;
+  removeEntityGroup: (groupId: string) => void;
+  updateGroupReplacement: (groupId: string, replacement: string) => void;
+  toggleGroup: (groupId: string) => void;
+  
+  // Getters calculés
   getSelectedEntities: () => Entity[];
   getSelectedCount: () => number;
   getEntitiesByType: () => Record<string, Entity[]>;
+  getUngroupedEntities: () => Entity[];
+  getGroupableEntities: () => Entity[];
 }
 
 export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
@@ -43,13 +65,18 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
   filename: null,
   textPreview: null,
   entities: [],
+  entityGroups: [],
   stats: null,
   isLoading: false,
   isAnalyzing: false,
   isGenerating: false,
   error: null,
+  editingEntity: null,
+  selectedEntitiesForGrouping: [],
+  showGroupModal: false,
+  showEditModal: false,
   
-  // Actions de base corrigées
+  // Actions de base
   setSessionData: (sessionId, filename, textPreview) => {
     console.log('Store - setSessionData:', { sessionId, filename, textPreviewLength: textPreview?.length });
     set({ sessionId, filename, textPreview });
@@ -62,7 +89,6 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
       firstEntities: entities?.slice(0, 3)
     });
     
-    // S'assurer que les entités ont la structure correcte
     const processedEntities = (entities || []).map((entity, index) => ({
       ...entity,
       id: entity.id || `entity-${index}`,
@@ -70,7 +96,10 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
       replacement: entity.replacement || `ANONYME_${index}`,
       occurrences: entity.occurrences || 1,
       confidence: entity.confidence || 0.8,
-      source: entity.source || 'unknown'
+      source: entity.source || 'unknown',
+      groupId: entity.groupId || undefined,
+      isGrouped: entity.isGrouped || false,
+      groupVariants: entity.groupVariants || []
     }));
     
     set({ 
@@ -88,24 +117,41 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
           : entity
       );
       
-      console.log('Store - Entity toggled:', {
-        entityId,
-        newSelected: updatedEntities.find(e => e.id === entityId)?.selected
-      });
+      // Si l'entité fait partie d'un groupe, mettre à jour le groupe aussi
+      const entity = state.entities.find(e => e.id === entityId);
+      const updatedGroups = entity?.groupId 
+        ? state.entityGroups.map(group => 
+            group.id === entity.groupId 
+              ? { ...group, selected: updatedEntities.find(e => e.id === entityId)?.selected || false }
+              : group
+          )
+        : state.entityGroups;
       
-      return { entities: updatedEntities };
+      return { entities: updatedEntities, entityGroups: updatedGroups };
     });
   },
   
   updateReplacement: (entityId, replacement) => {
     console.log('Store - updateReplacement:', { entityId, replacement });
-    set((state) => ({
-      entities: state.entities.map((entity) =>
+    set((state) => {
+      const updatedEntities = state.entities.map((entity) =>
         entity.id === entityId
           ? { ...entity, replacement }
           : entity
-      ),
-    }));
+      );
+      
+      // Si l'entité fait partie d'un groupe, mettre à jour le groupe aussi
+      const entity = state.entities.find(e => e.id === entityId);
+      const updatedGroups = entity?.groupId 
+        ? state.entityGroups.map(group => 
+            group.id === entity.groupId 
+              ? { ...group, replacement }
+              : group
+          )
+        : state.entityGroups;
+      
+      return { entities: updatedEntities, entityGroups: updatedGroups };
+    });
   },
   
   addCustomEntity: (customEntity) => {
@@ -122,87 +168,165 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
         source: 'manual'
       };
       
-      const updatedEntities = [...state.entities, newEntity];
-      
-      const updatedStats = state.stats ? {
-        ...state.stats,
-        total_entities: state.stats.total_entities + 1,
-        selected_count: state.stats.selected_count + 1,
-        by_type: {
-          ...state.stats.by_type,
-          [customEntity.entity_type]: (state.stats.by_type[customEntity.entity_type] || 0) + 1
-        }
-      } : {
-        total_entities: updatedEntities.length,
-        selected_count: updatedEntities.filter(e => e.selected).length,
-        by_type: { [customEntity.entity_type]: 1 }
-      };
-      
-      console.log('Store - Custom entity added:', { newEntity, updatedStats });
-      
-      return {
-        entities: updatedEntities,
-        stats: updatedStats
-      };
+      return { entities: [...state.entities, newEntity] };
     });
   },
   
   selectAll: () => {
-    console.log('Store - selectAll');
     set((state) => ({
       entities: state.entities.map((entity) => ({ ...entity, selected: true })),
+      entityGroups: state.entityGroups.map((group) => ({ ...group, selected: true }))
     }));
   },
   
   deselectAll: () => {
-    console.log('Store - deselectAll');
     set((state) => ({
       entities: state.entities.map((entity) => ({ ...entity, selected: false })),
+      entityGroups: state.entityGroups.map((group) => ({ ...group, selected: false }))
     }));
   },
   
-  setLoading: (isLoading) => {
-    console.log('Store - setLoading:', isLoading);
-    set({ isLoading });
+  setLoading: (isLoading) => set({ isLoading }),
+  setAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
+  setGenerating: (isGenerating) => set({ isGenerating }),
+  setError: (error) => set({ error }),
+  
+  // Nouvelles actions pour l'édition
+  setEditingEntity: (editingEntity) => set({ editingEntity }),
+  
+  modifyEntity: (entityId, newText, newReplacement) => {
+    console.log('Store - modifyEntity:', { entityId, newText, newReplacement });
+    set((state) => ({
+      entities: state.entities.map((entity) =>
+        entity.id === entityId
+          ? { 
+              ...entity, 
+              text: newText,
+              replacement: newReplacement || entity.replacement
+            }
+          : entity
+      ),
+    }));
   },
   
-  setAnalyzing: (isAnalyzing) => {
-    console.log('Store - setAnalyzing:', isAnalyzing);
-    set({ isAnalyzing });
+  // Nouvelles actions pour les groupes
+  toggleEntityForGrouping: (entityId) => {
+    set((state) => {
+      const isSelected = state.selectedEntitiesForGrouping.includes(entityId);
+      return {
+        selectedEntitiesForGrouping: isSelected
+          ? state.selectedEntitiesForGrouping.filter(id => id !== entityId)
+          : [...state.selectedEntitiesForGrouping, entityId]
+      };
+    });
   },
   
-  setGenerating: (isGenerating) => {
-    console.log('Store - setGenerating:', isGenerating);
-    set({ isGenerating });
+  setShowGroupModal: (showGroupModal) => set({ showGroupModal }),
+  setShowEditModal: (showEditModal) => set({ showEditModal }),
+  
+  createEntityGroup: (name, replacement) => {
+    set((state) => {
+      const groupId = `group-${Date.now()}`;
+      const selectedEntities = state.entities.filter(e => 
+        state.selectedEntitiesForGrouping.includes(e.id)
+      );
+      
+      const newGroup: EntityGroup = {
+        id: groupId,
+        name,
+        entities: selectedEntities,
+        replacement,
+        type: selectedEntities[0]?.type || 'PERSONNE' as any,
+        selected: true
+      };
+      
+      // Marquer les entités comme groupées
+      const updatedEntities = state.entities.map(entity =>
+        state.selectedEntitiesForGrouping.includes(entity.id)
+          ? { ...entity, groupId, isGrouped: true, replacement, selected: true }
+          : entity
+      );
+      
+      return {
+        entityGroups: [...state.entityGroups, newGroup],
+        entities: updatedEntities,
+        selectedEntitiesForGrouping: [],
+        showGroupModal: false
+      };
+    });
   },
   
-  setError: (error) => {
-    console.log('Store - setError:', error);
-    set({ error });
+  removeEntityGroup: (groupId) => {
+    set((state) => {
+      // Dégrouper les entités
+      const updatedEntities = state.entities.map(entity =>
+        entity.groupId === groupId
+          ? { ...entity, groupId: undefined, isGrouped: false }
+          : entity
+      );
+      
+      return {
+        entityGroups: state.entityGroups.filter(g => g.id !== groupId),
+        entities: updatedEntities
+      };
+    });
+  },
+  
+  updateGroupReplacement: (groupId, replacement) => {
+    set((state) => {
+      const updatedGroups = state.entityGroups.map(group =>
+        group.id === groupId ? { ...group, replacement } : group
+      );
+      
+      const updatedEntities = state.entities.map(entity =>
+        entity.groupId === groupId ? { ...entity, replacement } : entity
+      );
+      
+      return { entityGroups: updatedGroups, entities: updatedEntities };
+    });
+  },
+  
+  toggleGroup: (groupId) => {
+    set((state) => {
+      const updatedGroups = state.entityGroups.map(group =>
+        group.id === groupId ? { ...group, selected: !group.selected } : group
+      );
+      
+      const group = updatedGroups.find(g => g.id === groupId);
+      const updatedEntities = state.entities.map(entity =>
+        entity.groupId === groupId 
+          ? { ...entity, selected: group?.selected || false }
+          : entity
+      );
+      
+      return { entityGroups: updatedGroups, entities: updatedEntities };
+    });
   },
   
   reset: () => {
-    console.log('Store - reset');
     set({
       sessionId: null,
       filename: null,
       textPreview: null,
       entities: [],
+      entityGroups: [],
       stats: null,
       isLoading: false,
       isAnalyzing: false,
       isGenerating: false,
       error: null,
+      editingEntity: null,
+      selectedEntitiesForGrouping: [],
+      showGroupModal: false,
+      showEditModal: false,
     });
   },
   
-  // Getters calculés corrigés avec gestion d'erreur
+  // Getters calculés
   getSelectedEntities: () => {
     const state = get();
     try {
-      const selected = (state.entities || []).filter((entity) => entity.selected === true);
-      console.log('Store - getSelectedEntities:', { total: state.entities?.length || 0, selected: selected.length });
-      return selected;
+      return (state.entities || []).filter((entity) => entity.selected === true);
     } catch (error) {
       console.error('Store - Error in getSelectedEntities:', error);
       return [];
@@ -212,9 +336,7 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
   getSelectedCount: () => {
     const state = get();
     try {
-      const count = (state.entities || []).filter((entity) => entity.selected === true).length;
-      console.log('Store - getSelectedCount:', count);
-      return count;
+      return (state.entities || []).filter((entity) => entity.selected === true).length;
     } catch (error) {
       console.error('Store - Error in getSelectedCount:', error);
       return 0;
@@ -234,11 +356,22 @@ export const useAnonymizerStore = create<AnonymizerState>((set, get) => ({
         grouped[type].push(entity);
       });
       
-      console.log('Store - getEntitiesByType:', Object.keys(grouped).map(key => ({ type: key, count: grouped[key].length })));
       return grouped;
     } catch (error) {
       console.error('Store - Error in getEntitiesByType:', error);
       return {};
     }
   },
+  
+  getUngroupedEntities: () => {
+    const state = get();
+    return (state.entities || []).filter(entity => !entity.isGrouped);
+  },
+  
+  getGroupableEntities: () => {
+    const state = get();
+    return (state.entities || []).filter(entity => 
+      !entity.isGrouped && state.selectedEntitiesForGrouping.includes(entity.id)
+    );
+  }
 }));

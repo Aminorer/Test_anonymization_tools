@@ -27,10 +27,30 @@ class Entity(BaseModel):
     replacement: str = ""
     occurrences: int = 1
     valid: bool = True
+    # Nouvelles propriétés pour les groupes
+    group_id: Optional[str] = None
+    is_grouped: bool = False
+    group_variants: List[str] = []
     
     def __init__(self, **data):
         if data.get('id') is None:
             data['id'] = str(uuid.uuid4())
+        super().__init__(**data)
+
+class EntityGroup(BaseModel):
+    id: str
+    name: str
+    entity_ids: List[str]
+    replacement: str
+    entity_type: EntityTypeEnum
+    selected: bool = True
+    created_at: str = None
+    
+    def __init__(self, **data):
+        if data.get('id') is None:
+            data['id'] = str(uuid.uuid4())
+        if data.get('created_at') is None:
+            data['created_at'] = datetime.now().isoformat()
         super().__init__(**data)
 
 class CustomEntity(BaseModel):
@@ -38,10 +58,22 @@ class CustomEntity(BaseModel):
     entity_type: EntityTypeEnum
     replacement: str
 
+class EntityModification(BaseModel):
+    entity_id: str
+    new_text: str
+    new_replacement: Optional[str] = None
+
+class GroupEntitiesRequest(BaseModel):
+    session_id: str
+    entity_ids: List[str]
+    group_name: str
+    group_replacement: str
+
 class EntityStats(BaseModel):
     total_entities: int
     by_type: Dict[str, int]
     selected_count: int
+    grouped_count: Optional[int] = 0
 
 class AnalyzeRequest(BaseModel):
     mode: str = "standard"
@@ -65,9 +97,10 @@ class AuditLog(BaseModel):
     processing_location: str = "local_server"
     rgpd_compliant: bool = True
     entities_anonymized: int
+    groups_processed: int = 0
     replacement_summary: List[Dict[str, Any]]
 
-# Configuration des types d'entités avec séparation Regex/LLM
+# Configuration des types d'entités (Regex seulement pour données structurées)
 STRUCTURED_ENTITY_TYPES = {
     'NUMÉRO DE TÉLÉPHONE': {
         'patterns': [
@@ -138,8 +171,8 @@ STRUCTURED_ENTITY_TYPES = {
     }
 }
 
-# Types d'entités pour LLM (entités complexes)
-LLM_ENTITY_TYPES = {
+# Types d'entités pour SpaCy NER (entités complexes)
+SPACY_ENTITY_TYPES = {
     'PERSONNE': {
         'default_replacement': 'PERSONNE_X',
         'color': '#3b82f6',
@@ -153,4 +186,4 @@ LLM_ENTITY_TYPES = {
 }
 
 # Combinaison pour compatibilité
-ENTITY_TYPES = {**STRUCTURED_ENTITY_TYPES, **LLM_ENTITY_TYPES}
+ENTITY_TYPES = {**STRUCTURED_ENTITY_TYPES, **SPACY_ENTITY_TYPES}

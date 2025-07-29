@@ -30,18 +30,6 @@ class Settings(BaseSettings):
     SESSION_EXPIRE_MINUTES: int = 30
     MAX_FILE_SIZE: int = 50 * 1024 * 1024  # 50MB
     
-    # Ollama settings OPTIMISÉES
-    OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://ollama:11434")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "mistral:7b-instruct")
-    OLLAMA_TIMEOUT: int = int(os.getenv("OLLAMA_TIMEOUT", "30"))  # Réduit à 30 secondes
-    
-    # Nouvelles optimisations Ollama
-    OLLAMA_MAX_CONTEXT: int = int(os.getenv("OLLAMA_MAX_CONTEXT", "2048"))  # Context réduit
-    OLLAMA_MAX_TOKENS: int = int(os.getenv("OLLAMA_MAX_TOKENS", "300"))     # Tokens limités
-    OLLAMA_TEMPERATURE: float = float(os.getenv("OLLAMA_TEMPERATURE", "0.0")) # Pas de créativité
-    OLLAMA_CHUNK_SIZE: int = int(os.getenv("OLLAMA_CHUNK_SIZE", "1200"))    # Chunks plus petits
-    OLLAMA_MAX_CHUNKS: int = int(os.getenv("OLLAMA_MAX_CHUNKS", "3"))       # Maximum 3 chunks
-    
     # RGPD compliance settings
     RGPD_CONFIG: dict = {
         "data_processing": "local_only",
@@ -54,17 +42,17 @@ class Settings(BaseSettings):
     # Supported file types
     SUPPORTED_FILE_TYPES: List[str] = [".pdf", ".docx"]
     
-    # Performance optimizations
+    # Performance optimizations (SpaCy only)
     PERFORMANCE_CONFIG: dict = {
         "regex_only_mode": False,           # Mode regex seul disponible
-        "fast_validation": True,            # Validation rapide
+        "spacy_validation": True,           # Validation SpaCy
         "minimal_post_processing": True,    # Post-traitement minimal
         "parallel_processing": False,       # Pas de parallélisme pour éviter les conflits
         "cache_compiled_patterns": True,    # Cache des patterns regex
         "limit_entity_count": 1000,        # Limite du nombre d'entités
-        "timeout_per_chunk": 8.0,          # Timeout par chunk Ollama
-        "max_retry_attempts": 1,            # Une seule tentative
-        "early_stop_on_timeout": True       # Arrêt précoce si timeout
+        "spacy_batch_size": 100,           # Taille des lots SpaCy
+        "enable_entity_grouping": True,     # Nouvelle fonctionnalité de groupement
+        "enable_entity_editing": True       # Nouvelle fonctionnalité d'édition
     }
     
     class Config:

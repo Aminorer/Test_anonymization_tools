@@ -1,13 +1,12 @@
 import spacy
 import re
-import httpx
-import json
 from typing import List, Dict, Set, Tuple, Optional
 from app.models.entities import (
     Entity,
     EntityTypeEnum,
     ENTITY_TYPES,
     STRUCTURED_ENTITY_TYPES,
+    SPACY_ENTITY_TYPES
 )
 from app.core.config import settings
 import logging
@@ -27,54 +26,35 @@ class EntityCandidate:
     source: str
     context: str = ""
 
-class CorrectNLPAnalyzer:
+class SimplifiedNLPAnalyzer:
     def __init__(self):
-        # 1. REGEX : SEULEMENT pour données structurées (téléphone, SIRET, email, adresse)
+        # 1. REGEX : Pour données structurées (téléphone, SIRET, email, etc.)
         self._compiled_patterns = {}
         self._compile_structured_patterns()
         
-        # 2. NER SpaCy : Pour noms et organisations (mode approfondi seulement)
+        # 2. SpaCy NER : Pour noms et organisations (mode approfondi seulement)
         self.spacy_nlp = None
         self._load_spacy_model()
         
-        # 3. LLM Validation : Pour valider les résultats NER (mode approfondi seulement)
-        self.ollama_url = settings.OLLAMA_URL
-        self.ollama_model = "qwen2.5:0.5b"  # Modèle ultra-léger pour validation
-        self.ollama_timeout = 8
-        self.ollama_available = False
-        self._test_ollama_connection()
-        
-        logger.info("🧠 NLP Analyzer correct initialisé")
+        logger.info("🧠 NLP Analyzer simplifié initialisé (SANS LLM)")
         
     def _compile_structured_patterns(self):
         """Compile UNIQUEMENT les patterns pour données structurées"""
-        logger.info("🔧 Compilation patterns STRUCTURÉS uniquement...")
+        logger.info("🔧 Compilation patterns STRUCTURÉS...")
         
-        # SEULEMENT les types de données structurées
-        structured_types = [
-            'NUMÉRO DE TÉLÉPHONE',
-            'EMAIL', 
-            'SIRET/SIREN',
-            'NUMÉRO DE SÉCURITÉ SOCIALE',
-            'ADRESSE',
-            'RÉFÉRENCE JURIDIQUE'
-        ]
-        
-        for entity_type in structured_types:
-            if entity_type in STRUCTURED_ENTITY_TYPES:
-                config = STRUCTURED_ENTITY_TYPES[entity_type]
-                patterns = config.get('patterns', [])
-                self._compiled_patterns[entity_type] = []
-                
-                for pattern in patterns:
-                    try:
-                        compiled_pattern = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-                        self._compiled_patterns[entity_type].append(compiled_pattern)
-                    except re.error as e:
-                        logger.warning(f"Pattern invalide pour {entity_type}: {e}")
+        for entity_type in STRUCTURED_ENTITY_TYPES:
+            config = STRUCTURED_ENTITY_TYPES[entity_type]
+            patterns = config.get('patterns', [])
+            self._compiled_patterns[entity_type] = []
+            
+            for pattern in patterns:
+                try:
+                    compiled_pattern = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+                    self._compiled_patterns[entity_type].append(compiled_pattern)
+                except re.error as e:
+                    logger.warning(f"Pattern invalide pour {entity_type}: {e}")
         
         logger.info(f"✅ {sum(len(patterns) for patterns in self._compiled_patterns.values())} patterns structurés compilés")
-        logger.info("❌ AUCUN pattern regex pour noms/organisations (volontairement)")
     
     def _load_spacy_model(self):
         """Charge le meilleur modèle SpaCy français pour NER"""
@@ -95,60 +75,32 @@ class CorrectNLPAnalyzer:
         logger.warning("⚠️ Aucun modèle SpaCy français trouvé - Mode approfondi désactivé")
         self.spacy_nlp = None
     
-    def _test_ollama_connection(self):
-        """Test Ollama pour validation LLM"""
-        try:
-            response = httpx.get(f"{self.ollama_url}/api/tags", timeout=3.0)
-            if response.status_code == 200:
-                models = response.json().get('models', [])
-                available_models = [m['name'] for m in models]
-                
-                validation_models = [
-                    "qwen2.5:0.5b", "gemma2:2b", "phi3:mini", 
-                    "mistral:7b-instruct", "llama3.2:3b"
-                ]
-                
-                for model in validation_models:
-                    if model in available_models:
-                        self.ollama_model = model
-                        self.ollama_available = True
-                        logger.info(f"✅ LLM Validation: {model}")
-                        return
-                        
-                logger.warning("⚠️ Aucun modèle léger pour validation LLM")
-                self.ollama_available = False
-        except Exception as e:
-            logger.info(f"ℹ️ LLM Validation indisponible: {e}")
-            self.ollama_available = False
-    
     def analyze_document(self, text: str, mode: str = "standard") -> List[Entity]:
         """
-        Architecture claire :
+        Architecture simplifiée sans LLM :
         
         MODE STANDARD:
         - Regex UNIQUEMENT pour données structurées (téléphone, SIRET, email, adresse)
-        - AUCUNE détection de noms/organisations
         
         MODE APPROFONDI:
-        - Regex pour données structurées (téléphone, SIRET, email, adresse)
+        - Regex pour données structurées 
         - SpaCy NER pour détecter noms et organisations
-        - LLM pour valider les résultats SpaCy
         """
         start_time = time.time()
-        logger.info(f"🚀 Analyse {mode.upper()} - {len(text)} caractères")
+        logger.info(f"🚀 Analyse {mode.upper()} SIMPLIFIÉE - {len(text)} caractères")
         
         # ÉTAPE 1 : REGEX (toujours) - SEULEMENT données structurées
         structured_candidates = self._extract_structured_data(text)
-        logger.info(f"✅ Regex structuré: {len(structured_candidates)} entités (téléphone, SIRET, email...)")
+        logger.info(f"✅ Regex structuré: {len(structured_candidates)} entités")
         
         if mode == "standard":
             # MODE STANDARD : SEULEMENT les données structurées
-            logger.info("📋 Mode STANDARD : Aucune détection noms/organisations")
+            logger.info("📋 Mode STANDARD : Regex uniquement")
             all_candidates = structured_candidates
             
         else:  # mode == "approfondi"
-            # MODE APPROFONDI : Ajouter NER + Validation LLM
-            logger.info("🔬 Mode APPROFONDI : NER + Validation LLM pour noms/organisations")
+            # MODE APPROFONDI : Ajouter SpaCy NER
+            logger.info("🔬 Mode APPROFONDI : Regex + SpaCy NER")
             
             # ÉTAPE 2 : SpaCy NER pour noms et organisations
             ner_candidates = []
@@ -156,22 +108,10 @@ class CorrectNLPAnalyzer:
                 ner_candidates = self._extract_persons_orgs_with_spacy(text)
                 logger.info(f"✅ SpaCy NER: {len(ner_candidates)} candidats noms/organisations")
             else:
-                logger.error("❌ SpaCy indisponible - Mode approfondi impossible")
+                logger.warning("❌ SpaCy indisponible - Mode approfondi limité")
                 ner_candidates = []
             
-            # ÉTAPE 3 : Validation LLM des candidats NER
-            validated_candidates = []
-            if self.ollama_available and ner_candidates:
-                validated_candidates = self._validate_ner_with_llm(ner_candidates, text)
-                logger.info(f"✅ LLM Validation: {len(validated_candidates)}/{len(ner_candidates)} validés")
-            else:
-                if ner_candidates:
-                    logger.warning("⚠️ LLM indisponible - Garder candidats SpaCy avec filtrage confiance")
-                    validated_candidates = self._filter_by_confidence(ner_candidates)
-                else:
-                    validated_candidates = []
-            
-            all_candidates = structured_candidates + validated_candidates
+            all_candidates = structured_candidates + ner_candidates
         
         # POST-TRAITEMENT : Déduplication et création entités finales
         deduplicated = self._deduplicate_candidates(all_candidates)
@@ -211,7 +151,7 @@ class CorrectNLPAnalyzer:
                             is_valid = 8 <= digits <= 15
                             confidence = 0.95 if is_valid else 0.6
                         
-                        if is_valid:  # Seulement garder les entités valides
+                        if is_valid:
                             candidate = EntityCandidate(
                                 text=full_match,
                                 start=match.start(),
@@ -258,10 +198,33 @@ class CorrectNLPAnalyzer:
                     not any(c.isalpha() for c in text_clean)):
                     continue
                 
-                # Confiance basée sur le score SpaCy (si disponible)
+                # Filtrage des mots communs (stopwords personnalisés)
+                common_words = {
+                    'le', 'la', 'les', 'de', 'du', 'des', 'et', 'ou', 'mais', 'donc',
+                    'que', 'qui', 'quoi', 'où', 'quand', 'comment', 'pourquoi',
+                    'avec', 'sans', 'pour', 'par', 'sur', 'sous', 'dans', 'vers',
+                    'article', 'code', 'loi', 'décret', 'arrêt', 'jugement'
+                }
+                
+                if text_clean.lower() in common_words:
+                    continue
+                
+                # Confiance basée sur le score SpaCy
                 confidence = 0.8  # Confiance de base SpaCy
-                if hasattr(ent, 'ent_kb_id_') and ent.ent_kb_id_:
-                    confidence = 0.9  # Plus de confiance si entité liée
+                
+                # Boost de confiance pour les patterns typiques français
+                if entity_type == 'PERSONNE':
+                    # Patterns de noms français
+                    if any(title in text_clean for title in ['Monsieur', 'Madame', 'Maître', 'M.', 'Mme']):
+                        confidence = 0.9
+                    elif re.match(r'^[A-Z][a-z]+ [A-Z][A-Z]+$', text_clean):  # Prénom NOM
+                        confidence = 0.85
+                
+                elif entity_type == 'ORGANISATION':
+                    # Patterns d'organisations français
+                    org_keywords = ['SARL', 'SAS', 'SA', 'EURL', 'SNC', 'Tribunal', 'Cour', 'Cabinet', 'Société']
+                    if any(keyword in text_clean for keyword in org_keywords):
+                        confidence = 0.9
                 
                 candidate = EntityCandidate(
                     text=text_clean,
@@ -278,116 +241,6 @@ class CorrectNLPAnalyzer:
             logger.error(f"Erreur SpaCy NER: {e}")
         
         return candidates
-    
-    def _validate_ner_with_llm(self, candidates: List[EntityCandidate], text: str) -> List[EntityCandidate]:
-        """LLM validation des candidats SpaCy - Traitement par batch"""
-        if not candidates:
-            return []
-        
-        validated = []
-        
-        # Traiter par petits batches pour éviter timeout
-        batch_size = 5
-        for i in range(0, len(candidates), batch_size):
-            batch = candidates[i:i+batch_size]
-            batch_validated = self._validate_batch_with_llm(batch, text)
-            validated.extend(batch_validated)
-            
-            # Pause courte entre batches
-            time.sleep(0.5)
-        
-        return validated
-    
-    def _validate_batch_with_llm(self, batch: List[EntityCandidate], text: str) -> List[EntityCandidate]:
-        """Validation LLM d'un batch de candidats"""
-        if not batch:
-            return []
-        
-        # Créer le prompt de validation
-        entities_to_validate = []
-        for candidate in batch:
-            entities_to_validate.append({
-                "text": candidate.text,
-                "type": candidate.entity_type,
-                "context": candidate.context
-            })
-        
-        prompt = f"""Tu es un expert en reconnaissance d'entités nommées françaises.
-
-Valide si ces entités détectées par SpaCy sont correctes :
-
-{json.dumps(entities_to_validate, ensure_ascii=False, indent=2)}
-
-Pour chaque entité, réponds SEULEMENT par JSON :
-[
-  {{"text": "nom exact", "valid": true, "confidence": 0.95, "reason": "nom de personne français valide"}},
-  {{"text": "autre", "valid": false, "confidence": 0.2, "reason": "pas un nom réel"}}
-]
-
-Critères de validation :
-- PERSONNE : Vrai nom français (prénom + nom, titre + nom)
-- ORGANISATION : Vraie entreprise, cabinet, tribunal, institution
-- Rejeter : Mots isolés, concepts abstraits, erreurs OCR"""
-
-        try:
-            response = httpx.post(
-                f"{self.ollama_url}/api/generate",
-                json={
-                    "model": self.ollama_model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        "top_p": 0.8,
-                        "num_predict": 500
-                    }
-                },
-                timeout=self.ollama_timeout,
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            return self._parse_llm_validation(result.get('response', ''), batch)
-            
-        except Exception as e:
-            logger.warning(f"Erreur validation LLM batch: {e}")
-            # Fallback : garder les candidats avec confiance réduite
-            return self._filter_by_confidence(batch, min_confidence=0.7)
-    
-    def _parse_llm_validation(self, llm_response: str, original_batch: List[EntityCandidate]) -> List[EntityCandidate]:
-        """Parse la réponse LLM de validation"""
-        validated = []
-        
-        try:
-            # Extraire le JSON de la réponse
-            json_match = re.search(r'\[.*\]', llm_response, re.DOTALL)
-            if not json_match:
-                logger.warning("Pas de JSON dans réponse LLM")
-                return self._filter_by_confidence(original_batch)
-            
-            validations = json.loads(json_match.group(0))
-            
-            # Mapper les validations aux candidats originaux
-            for i, validation in enumerate(validations):
-                if i < len(original_batch):
-                    candidate = original_batch[i]
-                    
-                    if validation.get('valid', False):
-                        # Mettre à jour la confiance avec celle du LLM
-                        candidate.confidence = min(validation.get('confidence', 0.8), 0.95)
-                        candidate.source = 'spacy_llm_validated'
-                        validated.append(candidate)
-                        
-        except Exception as e:
-            logger.debug(f"Erreur parsing validation LLM: {e}")
-            # Fallback
-            return self._filter_by_confidence(original_batch)
-        
-        return validated
-    
-    def _filter_by_confidence(self, candidates: List[EntityCandidate], min_confidence: float = 0.75) -> List[EntityCandidate]:
-        """Filtrage par confiance (fallback sans LLM)"""
-        return [c for c in candidates if c.confidence >= min_confidence]
     
     def _validate_siret_siren(self, text: str) -> bool:
         """Validation checksum SIRET/SIREN"""
@@ -416,26 +269,45 @@ Critères de validation :
             return False
     
     def _deduplicate_candidates(self, candidates: List[EntityCandidate]) -> List[EntityCandidate]:
-        """Déduplication simple mais efficace"""
+        """Déduplication avec priorité aux sources fiables"""
         seen = {}
         deduplicated = []
         
-        for candidate in candidates:
-            key = f"{candidate.text.lower().strip()}_{candidate.entity_type}"
+        # Trier par priorité de source (regex > spacy)
+        source_priority = {
+            'regex_structured': 3,
+            'spacy_ner': 2
+        }
+        
+        candidates_sorted = sorted(candidates, key=lambda c: source_priority.get(c.source, 1), reverse=True)
+        
+        for candidate in candidates_sorted:
+            # Normaliser le texte pour la déduplication
+            key = self._normalize_entity_text(candidate.text)
             
             if key not in seen:
                 seen[key] = candidate
                 deduplicated.append(candidate)
             else:
-                # Garder celui avec la meilleure source (regex > spacy_llm > spacy)
+                # Garder celle avec la meilleure source ou confiance
                 existing = seen[key]
-                if (candidate.source == 'regex_structured' or 
-                    (candidate.source == 'spacy_llm_validated' and existing.source == 'spacy_ner')):
-                    idx = deduplicated.index(existing)
-                    deduplicated[idx] = candidate
+                existing_priority = source_priority.get(existing.source, 1)
+                candidate_priority = source_priority.get(candidate.source, 1)
+                
+                if (candidate_priority > existing_priority or 
+                    (candidate_priority == existing_priority and candidate.confidence > existing.confidence)):
+                    index = deduplicated.index(existing)
+                    deduplicated[index] = candidate
                     seen[key] = candidate
         
         return deduplicated
+    
+    def _normalize_entity_text(self, text: str) -> str:
+        """Normalise le texte d'une entité pour la déduplication"""
+        # Enlever la ponctuation, normaliser les espaces
+        normalized = re.sub(r'[^\w\s]', '', text.lower())
+        normalized = ' '.join(normalized.split())
+        return normalized
     
     def _create_final_entities(self, candidates: List[EntityCandidate], full_text: str) -> List[Entity]:
         """Création des entités finales"""
@@ -495,4 +367,4 @@ Critères de validation :
         return replacements.get(entity_type, f'ANONYME_{hash_suffix}')
 
 # Instance globale
-nlp_analyzer = CorrectNLPAnalyzer()
+nlp_analyzer = SimplifiedNLPAnalyzer()

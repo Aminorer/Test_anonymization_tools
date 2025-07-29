@@ -8,7 +8,7 @@ from docx import Document
 import io
 import logging
 
-from app.models.entities import Entity, AuditLog
+from app.models.entities import Entity, AuditLog, EntityGroup
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class SessionManager:
             'filename': filename,
             'original_text': original_text,
             'entities': [entity.dict() for entity in entities],
+            'entity_groups': [],  # Nouvelle propriété pour les groupes
             'document_bytes': doc_bytes,
             'created_at': datetime.now().isoformat(),
             'expires_at': (datetime.now() + timedelta(minutes=settings.SESSION_EXPIRE_MINUTES)).isoformat()
@@ -100,6 +101,52 @@ class SessionManager:
             session_data['entities'] = [entity.dict() for entity in entities]
             session_data['updated_at'] = datetime.now().isoformat()
             
+            return self._save_session_data(session_id, session_data)
+        
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de session {session_id}: {e}")
+            return False
+    
+    def update_session_data(self, session_id: str, updates: Dict[str, Any]) -> bool:
+        """Met à jour des données spécifiques d'une session"""
+        session_data = self.get_session(session_id)
+        if not session_data:
+            return False
+        
+        try:
+            # Appliquer les mises à jour
+            for key, value in updates.items():
+                session_data[key] = value
+            
+            session_data['updated_at'] = datetime.now().isoformat()
+            
+            return self._save_session_data(session_id, session_data)
+        
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de session {session_id}: {e}")
+            return False
+    
+    def update_session_entities_and_groups(self, session_id: str, entities: List[Entity], groups: List[Dict]) -> bool:
+        """Met à jour les entités et groupes d'une session"""
+        session_data = self.get_session(session_id)
+        if not session_data:
+            return False
+        
+        try:
+            # Mettre à jour les entités et groupes
+            session_data['entities'] = [entity.dict() for entity in entities]
+            session_data['entity_groups'] = groups
+            session_data['updated_at'] = datetime.now().isoformat()
+            
+            return self._save_session_data(session_id, session_data)
+        
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour entités/groupes {session_id}: {e}")
+            return False
+    
+    def _save_session_data(self, session_id: str, session_data: Dict[str, Any]) -> bool:
+        """Sauvegarde les données de session"""
+        try:
             if self.redis_client:
                 serialized_data = pickle.dumps(session_data)
                 self.redis_client.setex(
@@ -114,7 +161,7 @@ class SessionManager:
             return True
         
         except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de session {session_id}: {e}")
+            logger.error(f"Erreur sauvegarde session {session_id}: {e}")
             return False
     
     def get_document_from_session(self, session_id: str) -> Optional[Document]:
@@ -172,14 +219,17 @@ class SessionManager:
         except Exception as e:
             logger.error(f"Erreur lors du nettoyage des sessions: {e}")
     
-    def generate_audit_log(self, session_id: str, replacements: Dict[str, str]) -> AuditLog:
+    def generate_audit_log(self, session_id: str, replacements: Dict[str, str], groups_count: int = 0) -> AuditLog:
         """Génère un log d'audit RGPD pour une session"""
         session_data = self.get_session(session_id)
         if not session_data:
             raise ValueError("Session introuvable")
         
         # Déterminer le type d'entité pour chaque remplacement
-        entities_dict = {entity['text']: entity for entity in session_data['entities']}
+        entities_dict = {}
+        for entity_data in session_data.get('entities', []):
+            if isinstance(entity_data, dict):
+                entities_dict[entity_data.get('text', '')] = entity_data
         
         replacement_summary = []
         for original, replacement in replacements.items():
@@ -189,13 +239,16 @@ class SessionManager:
                 "method": "user_validated_replacement",
                 "original_length": len(original),
                 "replacement": replacement,
-                "confidence": entity_info.get('confidence', 0.0)
+                "confidence": entity_info.get('confidence', 0.0),
+                "source": entity_info.get('source', 'unknown'),
+                "is_grouped": entity_info.get('is_grouped', False)
             })
         
         audit_log = AuditLog(
             document=session_data['filename'],
             timestamp=datetime.now().isoformat(),
             entities_anonymized=len(replacements),
+            groups_processed=groups_count,
             replacement_summary=replacement_summary
         )
         
@@ -206,6 +259,7 @@ class SessionManager:
         stats = {
             "active_sessions": 0,
             "total_entities": 0,
+            "total_groups": 0,
             "memory_usage": "N/A"
         }
         
@@ -215,11 +269,12 @@ class SessionManager:
                 keys = self.redis_client.keys("session:*")
                 stats["active_sessions"] = len(keys)
                 
-                # Calculer le total des entités
+                # Calculer le total des entités et groupes
                 for key in keys:
                     try:
                         session_data = pickle.loads(self.redis_client.get(key))
                         stats["total_entities"] += len(session_data.get('entities', []))
+                        stats["total_groups"] += len(session_data.get('entity_groups', []))
                     except:
                         continue
             else:
@@ -227,6 +282,7 @@ class SessionManager:
                     stats["active_sessions"] = len(self._memory_sessions)
                     for session_data in self._memory_sessions.values():
                         stats["total_entities"] += len(session_data.get('entities', []))
+                        stats["total_groups"] += len(session_data.get('entity_groups', []))
         
         except Exception as e:
             logger.error(f"Erreur lors du calcul des statistiques: {e}")

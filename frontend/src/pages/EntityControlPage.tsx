@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Edit3, Plus, Download, Eye, CheckCircle, 
-  AlertCircle, ArrowLeft, Shield 
+  AlertCircle, ArrowLeft, Shield, Link, Unlink, Users
 } from 'lucide-react';
 import { useAnonymizerStore } from '../stores/anonymizerStore';
-import { generateAnonymizedDocument, addCustomEntity } from '../services/api';
+import { generateAnonymizedDocument, addCustomEntity, modifyEntity, groupEntitiesByText, ungroupEntities } from '../services/api';
 import { ENTITY_TYPES_CONFIG, EntityType, CustomEntity, Entity } from '../types/entities';
+import EntityEditModal from '../components/EntityEditModal';
+import EntityGroupModal from '../components/EntityGroupModal';
 
 const EntityControlPage: React.FC = () => {
   const navigate = useNavigate();
@@ -14,6 +16,7 @@ const EntityControlPage: React.FC = () => {
     sessionId,
     filename,
     entities,
+    entityGroups,
     stats,
     toggleEntity,
     updateReplacement,
@@ -23,11 +26,26 @@ const EntityControlPage: React.FC = () => {
     getSelectedEntities,
     getSelectedCount,
     getEntitiesByType,
+    getUngroupedEntities,
     setGenerating,
     setError,
     isGenerating,
     error,
-    textPreview
+    textPreview,
+    // Nouvelles fonctionnalités
+    editingEntity,
+    selectedEntitiesForGrouping,
+    showGroupModal,
+    showEditModal,
+    setEditingEntity,
+    modifyEntity: modifyEntityInStore,
+    toggleEntityForGrouping,
+    setShowGroupModal,
+    setShowEditModal,
+    createEntityGroup,
+    removeEntityGroup,
+    updateGroupReplacement,
+    toggleGroup
   } = useAnonymizerStore();
 
   const [customEntityForm, setCustomEntityForm] = useState({
@@ -37,115 +55,82 @@ const EntityControlPage: React.FC = () => {
   });
   const [showPreview, setShowPreview] = useState(false);
   const [sourceFilters, setSourceFilters] = useState({
-    regex_french: true,
-    regex_validated: true,
-    llm_ollama: true,
-    ollama_chunk: true,
-    manual: true,
-    spacy_targeted: true
+    regex_structured: true,
+    spacy_ner: true,
+    spacy_llm_validated: true,
+    manual: true
   });
-
-  // Debug logs
-  useEffect(() => {
-    console.log('EntityControlPage - État:', {
-      sessionId,
-      filename,
-      entitiesCount: entities?.length || 0,
-      entities: entities?.slice(0, 3), // Premiers éléments pour debug
-      stats
-    });
-  }, [sessionId, filename, entities, stats]);
+  const [groupingMode, setGroupingMode] = useState(false);
 
   // Rediriger si pas de session
   useEffect(() => {
     if (!sessionId || !filename) {
-      console.warn('Redirection - Session ou filename manquant');
       navigate('/');
     }
   }, [sessionId, filename, navigate]);
 
-  // Gestionnaire de filtres amélioré
+  // Gestionnaire de filtres
   const toggleSourceFilter = (source: string) => {
-    console.log('Toggle filter:', source);
-    setSourceFilters(prev => {
-      const newFilters = {
-        ...prev,
-        [source]: !prev[source]
-      };
-      console.log('Nouveaux filtres:', newFilters);
-      return newFilters;
-    });
+    setSourceFilters(prev => ({
+      ...prev,
+      [source]: !prev[source]
+    }));
   };
 
   // Sources disponibles dynamiquement
   const availableSources = React.useMemo(() => {
     if (!entities || entities.length === 0) return [];
-    const sources = [...new Set(entities.map(e => e.source))];
-    console.log('Sources disponibles:', sources);
-    return sources;
+    return [...new Set(entities.map(e => e.source))];
   }, [entities]);
 
   // Entités filtrées
   const filteredEntities = React.useMemo(() => {
-    if (!entities || entities.length === 0) {
-      console.log('Pas d\'entités à filtrer');
-      return [];
-    }
-
-    const filtered = entities.filter(entity => {
+    if (!entities || entities.length === 0) return [];
+    return entities.filter(entity => {
       const sourceKey = entity.source;
-      const isIncluded = sourceFilters[sourceKey as keyof typeof sourceFilters] !== false;
-      return isIncluded;
+      return sourceFilters[sourceKey as keyof typeof sourceFilters] !== false;
     });
-
-    console.log('Entités filtrées:', {
-      total: entities.length,
-      filtered: filtered.length,
-      activeFilters: Object.entries(sourceFilters).filter(([_, active]) => active)
-    });
-
-    return filtered;
   }, [entities, sourceFilters]);
+
+  // Entités non groupées pour l'affichage principal
+  const ungroupedEntities = getUngroupedEntities();
+  const filteredUngroupedEntities = ungroupedEntities.filter(entity => {
+    const sourceKey = entity.source;
+    return sourceFilters[sourceKey as keyof typeof sourceFilters] !== false;
+  });
 
   // Entités groupées par type
   const groupedEntities = React.useMemo(() => {
     const grouped: Record<string, Entity[]> = {};
-    
-    filteredEntities.forEach((entity) => {
+    filteredUngroupedEntities.forEach((entity) => {
       const type = entity.type;
       if (!grouped[type]) {
         grouped[type] = [];
       }
       grouped[type].push(entity);
     });
-
-    console.log('Entités groupées:', Object.keys(grouped).map(key => ({ type: key, count: grouped[key].length })));
     return grouped;
-  }, [filteredEntities]);
+  }, [filteredUngroupedEntities]);
 
   const selectedEntities = getSelectedEntities();
   const selectedCount = getSelectedCount();
 
   const getSourceLabel = (source: string) => {
     const labels: Record<string, string> = {
-      'regex_french': 'Regex Français',
-      'regex_validated': 'Regex Validé',
-      'llm_ollama': 'LLM Ollama',
-      'ollama_chunk': 'Ollama Chunk',
-      'manual': 'Manuel',
-      'spacy_targeted': 'SpaCy'
+      'regex_structured': 'Regex Structuré',
+      'spacy_ner': 'SpaCy NER',
+      'spacy_llm_validated': 'SpaCy + Validation',
+      'manual': 'Manuel'
     };
     return labels[source] || source;
   };
 
   const getSourceBadgeStyle = (source: string) => {
     const styles: Record<string, string> = {
-      'regex_french': 'bg-green-100 text-green-700',
-      'regex_validated': 'bg-green-100 text-green-700',
-      'llm_ollama': 'bg-purple-100 text-purple-700',
-      'ollama_chunk': 'bg-purple-100 text-purple-700',
-      'manual': 'bg-blue-100 text-blue-700',
-      'spacy_targeted': 'bg-orange-100 text-orange-700'
+      'regex_structured': 'bg-green-100 text-green-700',
+      'spacy_ner': 'bg-orange-100 text-orange-700',
+      'spacy_llm_validated': 'bg-purple-100 text-purple-700',
+      'manual': 'bg-blue-100 text-blue-700'
     };
     return styles[source] || 'bg-gray-100 text-gray-700';
   };
@@ -156,6 +141,65 @@ const EntityControlPage: React.FC = () => {
 
   const handleDeselectAll = () => {
     deselectAll();
+  };
+
+  const handleEditEntity = (entity: Entity) => {
+    setEditingEntity(entity);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEntityEdit = async (entityId: string, newText: string, newReplacement?: string) => {
+    try {
+      if (sessionId) {
+        await modifyEntity(sessionId, { entityId, newText, newReplacement });
+      }
+      modifyEntityInStore(entityId, newText, newReplacement);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la modification');
+    }
+  };
+
+  const handleToggleGroupingMode = () => {
+    setGroupingMode(!groupingMode);
+    // Reset sélection si on sort du mode groupement
+    if (groupingMode) {
+      // Vider la sélection pour groupement
+    }
+  };
+
+  const handleCreateGroup = async (name: string, replacement: string) => {
+    try {
+      if (sessionId) {
+        // Utiliser la nouvelle API qui fonctionne par texte
+        const selectedEntitiesForGroupingData = entities?.filter(e => 
+          selectedEntitiesForGrouping.includes(e.id)
+        ) || [];
+        
+        const entityTexts = selectedEntitiesForGroupingData.map(e => e.text);
+        
+        console.log('Groupement par texte:', {
+          entityTexts,
+          name,
+          replacement
+        });
+        
+        await groupEntitiesByText(sessionId, entityTexts, name, replacement);
+      }
+      createEntityGroup(name, replacement);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la création du groupe');
+    }
+  };
+
+  const handleRemoveGroup = async (groupId: string) => {
+    try {
+      if (sessionId) {
+        await ungroupEntities(sessionId, groupId);
+      }
+      removeEntityGroup(groupId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression du groupe');
+    }
   };
 
   const handleAddCustomEntity = async () => {
@@ -270,7 +314,7 @@ const EntityControlPage: React.FC = () => {
               <div>
                 <h1 className="text-2xl font-bold">{filename}</h1>
                 <p className="text-gray-600">
-                  {entities?.length || 0} entités détectées • {filteredEntities.length} affichées • {selectedCount}/{entities?.length || 0} sélectionnées
+                  {entities?.length || 0} entités détectées • {filteredUngroupedEntities.length} affichées • {entityGroups.length} groupes • {selectedCount}/{entities?.length || 0} sélectionnées
                 </p>
               </div>
             </div>
@@ -286,6 +330,17 @@ const EntityControlPage: React.FC = () => {
                 className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 Tout désélectionner
+              </button>
+              <button
+                onClick={handleToggleGroupingMode}
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                  groupingMode 
+                    ? 'bg-purple-100 text-purple-700' 
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <Link size={16} />
+                {groupingMode ? 'Sortir groupement' : 'Mode groupement'}
               </button>
               <button
                 onClick={() => setShowPreview(!showPreview)}
@@ -304,6 +359,83 @@ const EntityControlPage: React.FC = () => {
           
           {/* Colonne principale : Liste des entités */}
           <div className="lg:col-span-2 space-y-6">
+            
+            {/* Mode groupement activé */}
+            {groupingMode && (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-purple-800 flex items-center gap-2">
+                    <Users size={20} />
+                    Mode groupement actif
+                  </h3>
+                  <button
+                    onClick={() => setShowGroupModal(true)}
+                    disabled={selectedEntitiesForGrouping.length < 2}
+                    className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Créer groupe ({selectedEntitiesForGrouping.length})
+                  </button>
+                </div>
+                <p className="text-sm text-purple-700">
+                  Cliquez sur les entités à grouper ensemble (ex: "Monsieur OULHADJ" et "Monsieur Saïd OULHADJ")
+                </p>
+              </div>
+            )}
+
+            {/* Groupes d'entités existants */}
+            {entityGroups.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm">
+                <div className="p-6 border-b">
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Users size={20} className="text-purple-600" />
+                    Groupes d'entités ({entityGroups.length})
+                  </h2>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {entityGroups.map((group) => (
+                    <div key={group.id} className="p-4 border-b last:border-b-0 hover:bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={group.selected}
+                            onChange={() => toggleGroup(group.id)}
+                            className="w-5 h-5 text-purple-600"
+                          />
+                          
+                          <div className="flex-1">
+                            <div className="font-medium flex items-center gap-2">
+                              <span className="text-2xl">🔗</span>
+                              {group.name}
+                            </div>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {group.entities.map(e => `"${e.text}"`).join(' • ')}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="text"
+                            value={group.replacement}
+                            onChange={(e) => updateGroupReplacement(group.id, e.target.value)}
+                            className="px-3 py-1 border rounded text-sm w-32"
+                            disabled={!group.selected}
+                          />
+                          <button
+                            onClick={() => handleRemoveGroup(group.id)}
+                            className="text-red-600 hover:text-red-800 p-1"
+                            title="Dégrouper"
+                          >
+                            <Unlink size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             
             {/* Filtres par source */}
             <div className="bg-white rounded-xl shadow-sm p-6">
@@ -331,9 +463,9 @@ const EntityControlPage: React.FC = () => {
                 })}
               </div>
               <div className="text-xs text-gray-500 mt-2 space-y-1">
-                <p>✅ <strong>Regex</strong> : Données structurées fiables (téléphone, email, SIRET, etc.)</p>
-                <p>🧠 <strong>LLM Ollama</strong> : Entités complexes analysées par IA locale (noms, organisations)</p>
-                <p>💡 Mode "Standard" = Regex seul | Mode "Approfondi" = Regex + LLM</p>
+                <p>✅ <strong>Regex Structuré</strong> : Données fiables (téléphone, email, SIRET, etc.)</p>
+                <p>🧠 <strong>SpaCy NER</strong> : Reconnaissance d'entités nommées pour noms et organisations</p>
+                <p>💡 Mode "Standard" = Regex seul | Mode "Approfondi" = Regex + SpaCy</p>
               </div>
             </div>
 
@@ -372,7 +504,7 @@ const EntityControlPage: React.FC = () => {
               </div>
               
               {/* Message si aucune entité */}
-              {filteredEntities.length === 0 ? (
+              {filteredUngroupedEntities.length === 0 ? (
                 <div className="p-8 text-center">
                   <div className="text-gray-400 mb-4">
                     <FileText size={48} className="mx-auto" />
@@ -381,7 +513,7 @@ const EntityControlPage: React.FC = () => {
                   <p className="text-gray-500">
                     {entities?.length === 0 
                       ? 'Aucune entité détectée dans le document'
-                      : 'Toutes les entités sont filtrées. Ajustez les filtres ci-dessus.'
+                      : 'Toutes les entités sont filtrées ou groupées. Ajustez les filtres ci-dessus.'
                     }
                   </p>
                 </div>
@@ -399,23 +531,27 @@ const EntityControlPage: React.FC = () => {
                           <span className="text-2xl">{config.icon}</span>
                           <span>{type}</span>
                           <span className="text-sm text-gray-500">({typeEntities.length})</span>
-                          {type === 'SIRET/SIREN' && (
-                            <div className="ml-auto text-xs text-orange-700 bg-orange-200 px-2 py-1 rounded">
-                              Validation checksum activée
-                            </div>
-                          )}
                         </div>
                         
                         {typeEntities.map((entity) => (
                           <div key={entity.id} className="p-4 border-b last:border-b-0 hover:bg-gray-50">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-4 flex-1">
-                                <input
-                                  type="checkbox"
-                                  checked={entity.selected}
-                                  onChange={() => toggleEntity(entity.id)}
-                                  className="w-5 h-5 text-blue-600"
-                                />
+                                {groupingMode ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedEntitiesForGrouping.includes(entity.id)}
+                                    onChange={() => toggleEntityForGrouping(entity.id)}
+                                    className="w-5 h-5 text-purple-600"
+                                  />
+                                ) : (
+                                  <input
+                                    type="checkbox"
+                                    checked={entity.selected}
+                                    onChange={() => toggleEntity(entity.id)}
+                                    className="w-5 h-5 text-blue-600"
+                                  />
+                                )}
                                 
                                 <div className="flex-1">
                                   <div className="font-medium font-mono">"{entity.text}"</div>
@@ -437,31 +573,24 @@ const EntityControlPage: React.FC = () => {
                               </div>
                               
                               <div className="flex items-center gap-3">
-                                {type === 'SIRET/SIREN' && config.replacement_options ? (
-                                  <select 
-                                    value={entity.replacement}
-                                    onChange={(e) => updateReplacement(entity.id, e.target.value)}
-                                    className="px-3 py-1 border rounded text-sm w-40"
-                                    disabled={!entity.selected}
-                                  >
-                                    {config.replacement_options.map(option => (
-                                      <option key={option} value={option}>{option}</option>
-                                    ))}
-                                    <option value="custom">Personnalisé...</option>
-                                  </select>
-                                ) : (
-                                  <input
-                                    type="text"
-                                    value={entity.replacement}
-                                    onChange={(e) => updateReplacement(entity.id, e.target.value)}
-                                    placeholder={config.default_replacement}
-                                    className="px-3 py-1 border rounded text-sm w-32"
-                                    disabled={!entity.selected}
-                                  />
+                                {!groupingMode && (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={entity.replacement}
+                                      onChange={(e) => updateReplacement(entity.id, e.target.value)}
+                                      className="px-3 py-1 border rounded text-sm w-32"
+                                      disabled={!entity.selected}
+                                    />
+                                    <button 
+                                      onClick={() => handleEditEntity(entity)}
+                                      className="text-blue-600 hover:text-blue-800 p-1"
+                                      title="Modifier l'entité"
+                                    >
+                                      <Edit3 size={16} />
+                                    </button>
+                                  </>
                                 )}
-                                <button className="text-blue-600 hover:text-blue-800 p-1">
-                                  <Edit3 size={16} />
-                                </button>
                               </div>
                             </div>
                           </div>
@@ -516,6 +645,24 @@ const EntityControlPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Nouvelles fonctionnalités */}
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
+              <h3 className="font-semibold mb-4 text-purple-800">🆕 Nouvelles fonctionnalités</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Edit3 size={14} className="text-blue-600" />
+                  <span><strong>Modification d'entités</strong> : Éditez le texte à anonymiser</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link size={14} className="text-purple-600" />
+                  <span><strong>Groupement d'entités</strong> : Anonymisez plusieurs variantes ensemble</span>
+                </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  💡 Exemple : Grouper "Monsieur OULHADJ" et "Monsieur Saïd OULHADJ" pour les remplacer tous deux par "Monsieur X"
+                </div>
+              </div>
+            </div>
+
             {/* Statistiques */}
             {stats && (
               <div className="bg-white rounded-xl shadow-sm p-6">
@@ -533,6 +680,15 @@ const EntityControlPage: React.FC = () => {
                       </div>
                     );
                   })}
+                  {entityGroups.length > 0 && (
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="flex items-center gap-2 text-sm">
+                        <span>🔗</span>
+                        <span>Groupes</span>
+                      </span>
+                      <span className="text-sm font-medium">{entityGroups.length}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -568,6 +724,21 @@ const EntityControlPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      <EntityEditModal
+        entity={editingEntity}
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onSave={handleSaveEntityEdit}
+      />
+
+      <EntityGroupModal
+        isOpen={showGroupModal}
+        onClose={() => setShowGroupModal(false)}
+        selectedEntities={entities?.filter(e => selectedEntitiesForGrouping.includes(e.id)) || []}
+        onCreateGroup={handleCreateGroup}
+      />
     </div>
   );
 };
