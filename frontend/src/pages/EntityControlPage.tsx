@@ -786,11 +786,154 @@ const EnhancedEntityControlPage: React.FC = () => {
                   onChange={(e) => setCustomEntityForm({...customEntityForm, text: e.target.value})}
                   className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <select 
+                <select
                   value={customEntityForm.entity_type}
-                  onChange={(e) => setCustomEntityForm({...customEntityForm, entity_type: e.target.value as EntityType})}
+                  onChange={(e) =>
+                    setCustomEntityForm({
+                      ...customEntityForm,
+                      entity_type: e.target.value as EntityType,
+                    })
+                  }
                   className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {Object.values(EntityType).map(type => (
-                    <option key={type} value={type}>{type}</option>
+                  {Object.values(EntityType).map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
                   ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="Remplacer par..."
+                  value={customEntityForm.replacement}
+                  onChange={(e) =>
+                    setCustomEntityForm({
+                      ...customEntityForm,
+                      replacement: e.target.value,
+                    })
+                  }
+                  className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handleAddCustomEntity}
+                  className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors"
+                >
+                  Ajouter
+                </button>
+              </div>
+            </div>
+
+            {/* Nouvelles fonctionnalités */}
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-200">
+              <h3 className="font-semibold mb-4 text-purple-800">🆕 Nouvelles fonctionnalités</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <Edit3 size={14} className="text-blue-600" />
+                  <span><strong>Modification d'entités</strong> : Éditez le texte à anonymiser</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Shuffle size={14} className="text-purple-600" />
+                  <span><strong>Groupement d'entités</strong> : Anonymisez plusieurs variantes ensemble</span>
+                </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  💡 Exemple : Grouper "Monsieur OULHADJ" et "Monsieur Saïd OULHADJ" pour les remplacer tous deux par "Monsieur X"
+                </div>
+              </div>
+            </div>
+
+            {/* Statistiques */}
+            {stats && (
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="font-semibold mb-4">Statistiques</h3>
+                <div className="space-y-3">
+                  {Object.entries(stats.by_type).map(([type, count]) => {
+                    const config = getEntityTypeConfig(type);
+                    return (
+                      <div key={type} className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-sm">
+                          <span>{config.icon}</span>
+                          <span>{type}</span>
+                        </span>
+                        <span className="text-sm font-medium">{count}</span>
+                      </div>
+                    );
+                  })}
+                  {entityGroups.length > 0 && (
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <span className="flex items-center gap-2 text-sm">
+                        <span>🔗</span>
+                        <span>Groupes</span>
+                      </span>
+                      <span className="text-sm font-medium">{entityGroups.length}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Bouton de génération */}
+            <div className="bg-blue-50 rounded-xl p-6 border-2 border-blue-200">
+              <div className="text-center mb-4">
+                <Shield size={24} className="mx-auto text-blue-600 mb-2" />
+                <h3 className="font-semibold text-lg">Prêt pour l'anonymisation</h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  {selectedCount} entités sélectionnées<br />
+                  Format DOCX préservé • Conformité RGPD
+                </p>
+              </div>
+              <button
+                disabled={selectedCount === 0 || isGenerating}
+                onClick={handleGenerateDocument}
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <Download size={20} />
+                    Générer document anonymisé
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Vues de groupement */}
+      {showGroupForm && (
+        <GroupementForm
+          entities={entities}
+          onCreateGroup={createGroup}
+          onClose={() => setShowGroupForm(false)}
+        />
+      )}
+      {showAutoGroupModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-xl shadow-lg space-y-4">
+            <h3 className="font-semibold text-lg">Grouper les entités similaires ?</h3>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowAutoGroupModal(false)}
+                className="px-4 py-2 bg-gray-100 rounded hover:bg-gray-200"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={autoGroupSimilarEntities}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default EnhancedEntityControlPage;
