@@ -1,0 +1,42 @@
+# Environnement virtuel
+.venv/
+venv/
+env/
+
+# Fichiers Python compilés
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Fichiers de logs
+*.log
+
+# Fichiers temporaires
+*.tmp
+*.swp
+*.swo
+*~
+
+# Configurations locales
+*.env
+.env.*
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+coverage/
+.tox/
+.cache/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# VSCode settings
+.vscode/
+.history/
+
+# Build / packaging
+dist/
+build/
+*.egg-info/
