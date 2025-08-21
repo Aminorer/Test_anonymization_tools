@@ -80,7 +80,8 @@ def configure_pytorch_safe():
             # Configuration threads de base
             try:
                 torch.set_num_threads(1)
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
+                # Misconfiguration of thread settings is non-fatal
                 logging.warning(f"Impossible de configurer num_threads: {e}")
                 
             # Mode évaluation par défaut
@@ -108,7 +109,8 @@ def configure_pytorch_safe():
             logging.info("PyTorch configuré avec succès pour Streamlit")
             return True
             
-        except Exception as e:
+        except (ImportError, RuntimeError, AttributeError) as e:
+            # Import or configuration errors should disable PyTorch support
             logging.warning(f"Configuration PyTorch échouée: {e}")
             return False
 
@@ -154,7 +156,8 @@ if PYTORCH_AVAILABLE:
             AI_SUPPORT = True
             logging.info("Transformers configuré avec succès")
             
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
+        # Import or runtime issues while loading transformers
         logging.warning(f"Transformers non disponible: {e}")
 
 # === IMPORTS LOCAUX ===
@@ -703,9 +706,10 @@ class RegexAnonymizer:
             logging.info(f"Document anonymisé créé: {output_path}")
             return output_path
         
-        except Exception as e:
+        except (OSError, ValueError) as e:
+            # File system issues while saving the document
             logging.error(f"Erreur création document: {e}")
-            raise Exception(f"Impossible de créer le document anonymisé: {str(e)}")
+            raise RuntimeError(f"Impossible de créer le document anonymisé: {str(e)}")
     
     def get_processing_statistics(self) -> Dict[str, Any]:
         """Obtenir les statistiques globales"""
@@ -729,7 +733,7 @@ class RegexAnonymizer:
             if os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
             logging.info("Nettoyage terminé")
-        except Exception as e:
+        except OSError as e:
             logging.warning(f"Erreur nettoyage: {e}")
 
 # === CLASSES UTILITAIRES ===
@@ -840,7 +844,8 @@ class AIAnonymizer:
                     self._initialize_transformers()
                 self.model_loaded = True
                 
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
+                # Model loading issues disable AI features but allow regex mode
                 logging.error(f"Échec du chargement du modèle IA: {e}")
                 logging.info("Fallback vers mode regex uniquement")
     
@@ -865,7 +870,8 @@ class AIAnonymizer:
             
             raise Exception(f"Modèle SpaCy non trouvé: {self.model_config['name']}")
         
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
+            # Other SpaCy runtime issues
             raise Exception(f"Erreur SpaCy: {e}")
     
     def _initialize_transformers(self):
@@ -885,7 +891,7 @@ class AIAnonymizer:
             
             logging.info(f"Pipeline Transformers chargé: {self.model_config['name']}")
             
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             # Fallback vers un modèle plus léger
             try:
                 self.nlp_pipeline = pipeline(
@@ -896,7 +902,7 @@ class AIAnonymizer:
                 )
                 logging.info("Modèle fallback Transformers chargé")
                 
-            except Exception as e2:
+            except (OSError, RuntimeError, ValueError) as e2:
                 raise Exception(f"Tous les modèles Transformers ont échoué: {e}, {e2}")
     
     def detect_entities_ai(self, text: str, confidence_threshold: float = 0.7) -> List[Entity]:
@@ -916,7 +922,7 @@ class AIAnonymizer:
                 entities.extend(ai_entities)
                 logging.info(f"IA: {len(ai_entities)} entités détectées")
                 
-            except Exception as e:
+            except (RuntimeError, ValueError) as e:
                 logging.error(f"Erreur détection IA: {e}")
         
         # Étape 2: Compléter avec regex pour les entités structurées
@@ -963,7 +969,7 @@ class AIAnonymizer:
             
             return entities
             
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logging.error(f"Erreur SpaCy: {e}")
             return []
     
@@ -999,13 +1005,13 @@ class AIAnonymizer:
                                 )
                                 entities.append(entity)
                     
-                    except Exception as e:
+                    except (RuntimeError, ValueError) as e:
                         logging.warning(f"Erreur sur chunk: {e}")
                         continue
             
             return entities
             
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             logging.error(f"Erreur Transformers: {e}")
             return []
     
@@ -1348,7 +1354,8 @@ class DocumentProcessor:
                                         if row:
                                             text_content += " | ".join([cell or "" for cell in row]) + "\n"
                     
-                    except Exception as e:
+                    except (RuntimeError, ValueError) as e:
+                        # Skip problematic pages but continue processing others
                         logging.warning(f"Erreur page {page_num}: {e}")
                         continue
             
@@ -1356,7 +1363,7 @@ class DocumentProcessor:
                 metadata["text_length"] = len(text_content)
                 return text_content, metadata
         
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logging.warning(f"pdfplumber échoué: {e}")
         
         # Méthode 2: PyMuPDF fallback
@@ -1379,7 +1386,7 @@ class DocumentProcessor:
         
         except ImportError:
             logging.warning("PyMuPDF non disponible")
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logging.warning(f"PyMuPDF échoué: {e}")
         
         # Méthode 3: pdf2docx puis extraction DOCX
@@ -1394,7 +1401,7 @@ class DocumentProcessor:
             os.unlink(temp_docx)
             return text_content, metadata
         
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logging.warning(f"pdf2docx échoué: {e}")
         
         raise Exception("Impossible d'extraire le texte du PDF avec toutes les méthodes disponibles")
@@ -1456,7 +1463,7 @@ class DocumentProcessor:
             metadata["text_length"] = len(text_content)
             return text_content, metadata
         
-        except Exception as e:
+        except (OSError, ValueError) as e:
             raise Exception(f"Échec extraction DOCX: {str(e)}")
     
     def extract_text_from_txt(self, file_path: str) -> Tuple[str, Dict]:
@@ -1484,7 +1491,7 @@ class DocumentProcessor:
             
             except UnicodeDecodeError:
                 continue
-            except Exception as e:
+            except OSError as e:
                 raise Exception(f"Erreur lecture fichier texte: {e}")
         
         raise Exception("Impossible de décoder le fichier texte avec les encodages supportés")
@@ -1514,7 +1521,7 @@ class DocumentAnonymizer:
             try:
                 self.ai_anonymizer = AIAnonymizer(prefer_french=prefer_french)
                 logging.info("AIAnonymizer initialisé avec succès")
-            except Exception as e:
+            except (RuntimeError, OSError, ValueError) as e:
                 self.ai_anonymizer = None
                 logging.warning(f"AIAnonymizer non disponible: {e}")
         else:
@@ -1624,7 +1631,7 @@ class DocumentAnonymizer:
                 "processing_time": processing_time
             }
         
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             processing_time = time.time() - start_time
             logging.error(f"Erreur traitement document: {str(e)}")
             return {

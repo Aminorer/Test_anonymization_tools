@@ -39,7 +39,8 @@ class EntityManager:
             logging.info(f"Entity added: {entity_data['id']}")
             return entity_data['id']
             
-        except Exception as e:
+        except ValueError as e:
+            # Missing required fields are reported as ValueError
             logging.error(f"Error adding entity: {str(e)}")
             raise
     
@@ -64,7 +65,8 @@ class EntityManager:
             logging.info(f"Entity updated: {entity_id}")
             return True
             
-        except Exception as e:
+        except (KeyError, TypeError) as e:
+            # Updating with invalid keys or data types is handled gracefully
             logging.error(f"Error updating entity: {str(e)}")
             return False
     
@@ -91,7 +93,8 @@ class EntityManager:
             logging.info(f"Entity deleted: {entity_id}")
             return True
             
-        except Exception as e:
+        except (KeyError, ValueError) as e:
+            # Issues manipulating entity lists are treated as deletion failures
             logging.error(f"Error deleting entity: {str(e)}")
             return False
     
@@ -173,7 +176,8 @@ class EntityManager:
                 key=lambda x: x.get(sort_by, 0) if sort_by in ['start', 'end', 'confidence'] else str(x.get(sort_by, '')),
                 reverse=reverse
             )
-        except Exception as e:
+        except TypeError as e:
+            # Sorting may fail if keys contain incomparable values
             logging.error(f"Error sorting entities: {str(e)}")
             return entities
     
@@ -200,7 +204,8 @@ class EntityManager:
             logging.info(f"Group created: {group_id}")
             return group_id
             
-        except Exception as e:
+        except ValueError as e:
+            # Invalid input for group creation should surface as ValueError
             logging.error(f"Error creating group: {str(e)}")
             raise
     
@@ -225,7 +230,8 @@ class EntityManager:
             logging.info(f"Group updated: {group_id}")
             return True
             
-        except Exception as e:
+        except (KeyError, TypeError) as e:
+            # Updating with invalid keys or structures is handled gracefully
             logging.error(f"Error updating group: {str(e)}")
             return False
     
@@ -249,7 +255,8 @@ class EntityManager:
             logging.info(f"Group deleted: {group_id}")
             return True
             
-        except Exception as e:
+        except (KeyError, ValueError) as e:
+            # Errors removing group data are logged but not raised
             logging.error(f"Error deleting group: {str(e)}")
             return False
     
@@ -282,7 +289,8 @@ class EntityManager:
             
             return True  # Déjà dans le groupe
             
-        except Exception as e:
+        except KeyError as e:
+            # Missing expected keys when modifying groups is handled gracefully
             logging.error(f"Error adding entity to group: {str(e)}")
             return False
     
@@ -306,7 +314,8 @@ class EntityManager:
             
             return True  # Pas dans le groupe
             
-        except Exception as e:
+        except KeyError as e:
+            # Missing keys while removing entities from groups
             logging.error(f"Error removing entity from group: {str(e)}")
             return False
     
@@ -402,7 +411,8 @@ class EntityManager:
             logging.info(f"Action undone: {action}")
             return True
             
-        except Exception as e:
+        except (ValueError, KeyError) as e:
+            # Undo may fail if history entries are malformed
             logging.error(f"Error undoing action: {str(e)}")
             return False
     
@@ -462,7 +472,8 @@ class EntityManager:
             
             logging.info(f"Data imported: {len(self.entities)} entities, {len(self.groups)} groups")
             
-        except Exception as e:
+        except (KeyError, TypeError, ValueError) as e:
+            # Input data not matching expected structure triggers these errors
             logging.error(f"Error importing data: {str(e)}")
             raise
     
@@ -476,7 +487,8 @@ class EntityManager:
             logging.info(f"Data exported to {file_path}")
             return True
             
-        except Exception as e:
+        except (OSError, TypeError) as e:
+            # File writing or serialization issues during export
             logging.error(f"Error exporting to JSON: {str(e)}")
             return False
     
@@ -490,7 +502,8 @@ class EntityManager:
             logging.info(f"Data imported from {file_path}")
             return True
             
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            # Handle file access, JSON parsing, or data-structure issues
             logging.error(f"Error importing from JSON: {str(e)}")
             return False
     

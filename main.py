@@ -45,7 +45,8 @@ def configure_pytorch_safe():
         # Configuration threads
         try:
             torch.set_num_threads(1)
-        except Exception as thread_error:
+        except (RuntimeError, ValueError) as thread_error:
+            # Some environments do not support modifying thread settings
             logging.warning(f"PyTorch thread configuration warning: {thread_error}")
         
         # Désactiver JIT et optimisations
@@ -58,7 +59,8 @@ def configure_pytorch_safe():
         torch.set_grad_enabled(False)
         
         return True
-    except Exception as e:
+    except (ImportError, RuntimeError, AttributeError) as e:
+        # If PyTorch cannot be configured, fall back to regex-only mode
         logging.warning(f"PyTorch configuration warning: {e}")
         return False
 
@@ -536,7 +538,8 @@ def process_document_core(file_content, filename, mode, confidence, preset):
         
         return result
         
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
+        # Return structured error for file processing issues
         return {
             "status": "error",
             "error": f"Erreur lors du traitement: {str(e)}"
@@ -632,7 +635,8 @@ def process_document_with_progress(uploaded_file):
             st.error(f"❌ Erreur lors du traitement: {result.get('error', 'Erreur inconnue')}")
             return False
             
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
+        # Surface processing errors to the user
         st.error(f"❌ Erreur lors du traitement: {str(e)}")
         if st.session_state.get("debug_mode", False):
             st.exception(e)
@@ -1217,7 +1221,8 @@ def perform_advanced_search(text, query, case_sensitive, whole_words, use_regex,
                         'entity_id': entity['id']
                     })
     
-    except Exception as e:
+    except ValueError as e:
+        # Handle invalid search parameters
         st.error(f"Erreur lors de la recherche: {e}")
     
     return results
@@ -1456,7 +1461,8 @@ def display_export_section_advanced():
                 else:
                     st.error("❌ Erreur lors de l'export du document")
                     
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
+                # Export may fail due to filesystem or document issues
                 st.error(f"❌ Erreur: {str(e)}")
     
     with export_col2:
@@ -1525,7 +1531,8 @@ def main():
         # Nettoyage périodique
         cleanup_temp_files()
         
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
+        # Catch any remaining unexpected errors and display them
         st.error(f"❌ Erreur inattendue: {str(e)}")
         if st.session_state.get("debug_mode", False):
             st.exception(e)
