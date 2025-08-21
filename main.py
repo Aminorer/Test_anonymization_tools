@@ -1,5 +1,21 @@
-import streamlit as st
+# === CONFIGURATION ANTI-CONFLIT (AJOUTER AU DÉBUT) ===
 import os
+import warnings
+
+# Configuration PyTorch pour Streamlit
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["OMP_NUM_THREADS"] = "1"
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+
+# Import sécurisé PyTorch
+try:
+    import torch
+    torch.set_num_threads(1)
+except:
+    pass
+
+# === VOTRE CODE EXISTANT ===
+import streamlit as st
 import tempfile
 import zipfile
 from pathlib import Path
