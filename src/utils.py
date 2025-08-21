@@ -43,9 +43,10 @@ def save_upload_file(uploaded_file) -> str:
         logging.info(f"File saved: {file_path}")
         return str(file_path)
         
-    except Exception as e:
+    except OSError as e:
+        # Filesystem operations (mkdir/open) can fail due to permission issues
         logging.error(f"Error saving uploaded file: {str(e)}")
-        raise Exception(f"Failed to save uploaded file: {str(e)}")
+        raise RuntimeError(f"Failed to save uploaded file: {str(e)}") from e
 
 def cleanup_temp_files(max_age_hours: int = 24):
     """Nettoyer les fichiers temporaires anciens"""
@@ -65,13 +66,15 @@ def cleanup_temp_files(max_age_hours: int = 24):
                     try:
                         file_path.unlink()
                         files_cleaned += 1
-                    except Exception as e:
+                    except OSError as e:
+                        # Deletion may fail if the file is in use or permissions are lacking
                         logging.warning(f"Could not delete {file_path}: {str(e)}")
         
         if files_cleaned > 0:
             logging.info(f"Cleaned up {files_cleaned} temporary files")
             
-    except Exception as e:
+    except OSError as e:
+        # Issues accessing the temporary directory should be reported
         logging.error(f"Error during cleanup: {str(e)}")
 
 def generate_file_hash(file_path: str) -> str:
@@ -82,7 +85,8 @@ def generate_file_hash(file_path: str) -> str:
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
-    except Exception as e:
+    except OSError as e:
+        # Opening/reading the file can raise OSError if the path is invalid
         logging.error(f"Error generating file hash: {str(e)}")
         return ""
 
@@ -114,7 +118,8 @@ def create_safe_directory(path: str) -> str:
     try:
         Path(path).mkdir(parents=True, exist_ok=True)
         return path
-    except Exception as e:
+    except OSError as e:
+        # Directory creation may fail (e.g., permissions)
         logging.error(f"Error creating directory {path}: {str(e)}")
         raise
 
@@ -131,7 +136,8 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
             "modified": datetime.fromtimestamp(file_stat.st_mtime),
             "hash": generate_file_hash(file_path)
         }
-    except Exception as e:
+    except OSError as e:
+        # Stat or access errors mean the file information cannot be retrieved
         logging.error(f"Error getting file info: {str(e)}")
         return {}
 
@@ -142,7 +148,8 @@ def export_entities_to_json(entities: List[Dict], output_path: str) -> bool:
             json.dump(entities, f, ensure_ascii=False, indent=2, default=str)
         logging.info(f"Entities exported to {output_path}")
         return True
-    except Exception as e:
+    except (OSError, TypeError) as e:
+        # Writing to disk or JSON serialisation errors are expected here
         logging.error(f"Error exporting entities: {str(e)}")
         return False
 
@@ -153,7 +160,8 @@ def import_entities_from_json(json_path: str) -> List[Dict]:
             entities = json.load(f)
         logging.info(f"Entities imported from {json_path}")
         return entities
-    except Exception as e:
+    except (OSError, json.JSONDecodeError) as e:
+        # Handle file access or JSON parsing issues during import
         logging.error(f"Error importing entities: {str(e)}")
         return []
 
@@ -338,7 +346,8 @@ def create_backup(file_path: str, backup_dir: str = None) -> str:
         logging.info(f"Backup created: {backup_path}")
         return str(backup_path)
         
-    except Exception as e:
+    except OSError as e:
+        # Copying or accessing files may fail if paths are invalid
         logging.error(f"Error creating backup: {str(e)}")
         raise
 
@@ -356,7 +365,8 @@ def compress_file(file_path: str, output_path: str = None) -> str:
         logging.info(f"File compressed: {output_path}")
         return output_path
         
-    except Exception as e:
+    except (OSError, RuntimeError, zipfile.BadZipFile) as e:
+        # Compression or file access issues should be surfaced
         logging.error(f"Error compressing file: {str(e)}")
         raise
 
@@ -412,7 +422,8 @@ def get_system_info() -> Dict[str, Any]:
             "memory_available": psutil.virtual_memory().available,
             "disk_usage": psutil.disk_usage('/').percent
         }
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
+        # psutil may fail if system info is unavailable
         logging.error(f"Error getting system info: {str(e)}")
         return {}
 
