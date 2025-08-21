@@ -1249,7 +1249,7 @@ def display_analysis_tab():
     
     with col2:
         if stats['confidence_stats']:
-            st.metric("Confiance Moyenne", f"{stats['confidence_stats']['avg']:.0%}")
+            st.metric("Confiance Moyenne", f"{stats['confidence_stats'].get('average', 0):.0%}")
             st.metric("Confiance Minimale", f"{stats['confidence_stats']['min']:.0%}")
             st.metric("Confiance Maximale", f"{stats['confidence_stats']['max']:.0%}")
     
