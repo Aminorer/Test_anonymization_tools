@@ -44,6 +44,21 @@ from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
 
+# === IMPORTS DOCUMENT ===
+try:
+    from docx import Document
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
+    logging.warning("Support DOCX désactivé: Module python-docx non disponible")
+
+try:
+    from pdf2docx import parse as pdf2docx_parse
+    PDF2DOCX_SUPPORT = True
+except ImportError:
+    PDF2DOCX_SUPPORT = False
+    logging.warning("Support PDF2DOCX désactivé: Module pdf2docx non disponible")
+
 # === CONFIGURATION PYTORCH THREAD-SAFE ===
 _pytorch_lock = threading.Lock()
 _pytorch_configured = False
@@ -62,22 +77,32 @@ def configure_pytorch_safe():
         try:
             import torch
             
-            # Configuration threads
-            torch.set_num_threads(1)
-            torch.set_num_interop_threads(1)
-            
-            # Désactiver JIT et optimisations problématiques
-            if hasattr(torch, 'jit'):
-                torch.jit.set_fuser('fuser0')
-                torch._C._jit_set_profiling_mode(False)
-                torch._C._jit_set_profiling_executor(False)
-            
+            # Configuration threads de base
+            try:
+                torch.set_num_threads(1)
+            except Exception as e:
+                logging.warning(f"Impossible de configurer num_threads: {e}")
+                
             # Mode évaluation par défaut
             torch.set_grad_enabled(False)
             
-            # Éviter les conflits de classes
+            # Désactiver JIT et optimisations sélectivement
+            if hasattr(torch, 'jit'):
+                try:
+                    torch._C._jit_set_profiling_mode(False)
+                except:
+                    pass
+                try:
+                    torch._C._jit_set_profiling_executor(False)
+                except:
+                    pass
+            
+            # Éviter les conflits de classes si possible
             if hasattr(torch, '_C') and hasattr(torch._C, '_disable_torch_function_mode'):
-                torch._C._disable_torch_function_mode()
+                try:
+                    torch._C._disable_torch_function_mode()
+                except:
+                    pass
             
             _pytorch_configured = True
             logging.info("PyTorch configuré avec succès pour Streamlit")
@@ -275,6 +300,47 @@ class RegexAnonymizer:
         
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
+        
+    def _clean_entities(self, entities: List[Entity]) -> List[Entity]:
+        """Nettoyage et validation finale des entités détectées"""
+        cleaned = []
+        for entity in entities:
+            # Vérification et nettoyage de la valeur
+            if not entity.value or len(entity.value.strip()) < 2:
+                continue
+                
+            # Normalisation des espaces
+            entity.value = re.sub(r'\s+', ' ', entity.value.strip())
+            
+            # Validation selon le type
+            if entity.type == "EMAIL":
+                if not "@" in entity.value or not "." in entity.value.split("@")[1]:
+                    continue
+            elif entity.type == "PHONE":
+                if not self._validate_phone_number(entity.value):
+                    continue
+            elif entity.type == "IBAN":
+                if not self._validate_iban(entity.value):
+                    continue
+            
+            # Ajout si valide
+            cleaned.append(entity)
+            
+        return cleaned
+        
+    def _validate_phone_number(self, phone: str) -> bool:
+        """Validation des numéros de téléphone"""
+        # Nettoyer le numéro
+        digits = re.sub(r'\D', '', phone)
+        # Vérifier la longueur et le format
+        return 8 <= len(digits) <= 15
+        
+    def _validate_iban(self, iban: str) -> bool:
+        """Validation basique d'IBAN"""
+        # Supprimer les espaces
+        clean_iban = iban.replace(' ', '')
+        # Vérifier longueur minimale et format
+        return len(clean_iban) >= 15 and bool(re.match(r'^[A-Z]{2}\d{2}[A-Z0-9]+$', clean_iban))
     
     def _normalize_entity_type(self, entity_type: str) -> str:
         """Normaliser les types d'entités français"""
