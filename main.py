@@ -98,7 +98,13 @@ st.set_page_config(
 try:
     from src.anonymizer import DocumentAnonymizer
     from src.entity_manager import EntityManager
-    from src.utils import format_file_size, save_upload_file, cleanup_temp_files, generate_anonymization_stats
+    from src.utils import (
+        format_file_size,
+        save_upload_file,
+        cleanup_temp_files,
+        generate_anonymization_stats,
+        calculate_text_coverage,
+    )
     from src.config import ENTITY_COLORS, SUPPORTED_FORMATS, MAX_FILE_SIZE, ANONYMIZATION_PRESETS
 except ImportError as e:
     st.error(f"❌ Erreur d'import des modules: {e}")
@@ -1256,9 +1262,8 @@ def display_analysis_tab():
         doc_length = len(st.session_state.document_text)
         entity_density = (stats['total_entities'] / doc_length * 1000) if doc_length > 0 else 0
         st.metric("Densité", f"{entity_density:.1f}/1k chars")
-        
-        total_char_coverage = sum(e.get('end', 0) - e.get('start', 0) for e in st.session_state.entities)
-        coverage_percent = (total_char_coverage / doc_length * 100) if doc_length > 0 else 0
+
+        coverage_percent = calculate_text_coverage(st.session_state.entities, doc_length)
         st.metric("Couverture", f"{coverage_percent:.1f}%")
     
     # Analyse de distribution
