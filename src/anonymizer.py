@@ -1265,7 +1265,7 @@ class AIAnonymizer:
         
         for current in sorted_entities:
             conflict_found = False
-            
+
             for i, existing in enumerate(resolved):
                 if self._entities_overlap(current, existing):
                     winner = self._resolve_conflict(current, existing)
@@ -1870,4 +1870,42 @@ class DocumentAnonymizer:
 
     def _entities_overlap(self, entity1: Entity, entity2: Entity) -> bool:
         return not (entity1.end <= entity2.start or entity2.end <= entity1.start)
+
+    def _resolve_conflict(self, entity1: Entity, entity2: Entity) -> Entity:
+        """Résoudre les conflits en réutilisant les règles de priorité.
+
+        Cette implémentation délègue la résolution à l'anonymiseur regex
+        afin de garantir une cohérence des priorités entre les différents
+        anonymiseurs. Les règles incluent la priorité des types structurés,
+        de la méthode de détection, du niveau de confiance et de la longueur
+        de l'entité.
+        """
+
+        # Délégation directe si possible pour conserver la même logique
+        if hasattr(self.regex_anonymizer, "_resolve_conflict"):
+            return self.regex_anonymizer._resolve_conflict(entity1, entity2)
+
+        # Fallback au cas où la méthode ne serait pas disponible
+        structured_types = {"EMAIL", "PHONE", "IBAN", "SIRET", "SIREN", "SSN", "TVA"}
+
+        if entity1.type in structured_types and entity2.type not in structured_types:
+            return entity1
+        if entity2.type in structured_types and entity1.type not in structured_types:
+            return entity2
+
+        method_priority = {"regex": 3, "spacy": 2, "transformers": 1}
+        priority1 = method_priority.get(getattr(entity1, "method", ""), 0)
+        priority2 = method_priority.get(getattr(entity2, "method", ""), 0)
+
+        if priority1 != priority2:
+            return entity1 if priority1 > priority2 else entity2
+
+        conf1 = getattr(entity1, "confidence", 0.0)
+        conf2 = getattr(entity2, "confidence", 0.0)
+        if abs(conf1 - conf2) > 0.15:
+            return entity1 if conf1 > conf2 else entity2
+
+        len1 = entity1.end - entity1.start
+        len2 = entity2.end - entity2.start
+        return entity1 if len1 >= len2 else entity2
     

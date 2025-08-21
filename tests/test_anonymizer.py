@@ -3,6 +3,7 @@ Tests unitaires pour l'anonymiseur de documents
 """
 
 import unittest
+from unittest import mock
 import tempfile
 import os
 from pathlib import Path
@@ -275,6 +276,35 @@ class TestDocumentAnonymizer(unittest.TestCase):
             
         finally:
             os.unlink(temp_path)
+
+    def test_conflict_resolution_delegates(self):
+        """Vérifie que la résolution de conflits utilise l'aide dédiée"""
+        e1 = Entity(
+            id="1",
+            type="EMAIL",
+            value="john@example.com",
+            start=0,
+            end=16,
+            confidence=0.9,
+            method="regex",
+        )
+        e2 = Entity(
+            id="2",
+            type="PERSON",
+            value="john",
+            start=0,
+            end=4,
+            confidence=0.99,
+            method="spacy",
+        )
+
+        original = self.anonymizer._resolve_conflict
+        with mock.patch.object(self.anonymizer, "_resolve_conflict", wraps=original) as mocked:
+            resolved = self.anonymizer._resolve_entity_conflicts([e1, e2])
+            mocked.assert_called_once()
+
+        self.assertEqual(len(resolved), 1)
+        self.assertEqual(resolved[0].type, "EMAIL")
 
 class TestIntegration(unittest.TestCase):
     """Tests d'intégration"""
