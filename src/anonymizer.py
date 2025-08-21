@@ -1532,7 +1532,18 @@ class DocumentAnonymizer:
             "processing_time": 0.0,
             "ai_available": self.ai_anonymizer is not None
         }
-    
+
+    def _validate_anonymization(
+        self,
+        original_text: str,
+        anonymized_text: str,
+        entities: List[Entity],
+    ) -> Dict[str, Any]:
+        """Deleguer la validation à l'anonymiseur regex."""
+        return self.regex_anonymizer._validate_anonymization(
+            original_text, anonymized_text, entities
+        )
+
     def process_document(self, file_path: str, mode: str = "ai", confidence: float = 0.7) -> Dict[str, Any]:
         """Traitement principal avec gestion optimisée des performances"""
         import time
