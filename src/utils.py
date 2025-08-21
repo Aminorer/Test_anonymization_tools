@@ -268,6 +268,7 @@ def generate_anonymization_stats(entities: List[Dict], text_length: int) -> Dict
             "max": max(confidences),
             "average": sum(confidences) / len(confidences),
             "high_confidence_count": len([c for c in confidences if c >= 0.8]),
+            "medium_confidence_count": len([c for c in confidences if 0.5 <= c < 0.8]),
             "low_confidence_count": len([c for c in confidences if c < 0.5])
         }
     

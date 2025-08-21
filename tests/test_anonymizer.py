@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.anonymizer import RegexAnonymizer, DocumentAnonymizer, Entity
 from src.entity_manager import EntityManager
-from src.utils import format_file_size, validate_entities
+from src.utils import format_file_size, validate_entities, generate_anonymization_stats
 
 class TestRegexAnonymizer(unittest.TestCase):
     """Tests pour l'anonymiseur Regex"""
@@ -206,6 +206,43 @@ class TestEntityManager(unittest.TestCase):
         high_conf = self.manager.filter_entities({"min_confidence": 0.8})
         self.assertEqual(len(high_conf), 1)
 
+    def test_confidence_stats_keys(self):
+        """Vérifie la standardisation des clés de statistiques de confiance"""
+        # Ajouter des entités avec différents niveaux de confiance
+        self.manager.add_entity({
+            "type": "EMAIL",
+            "value": "high@example.com",
+            "start": 0,
+            "end": 16,
+            "confidence": 0.9,
+        })
+        self.manager.add_entity({
+            "type": "EMAIL",
+            "value": "medium@example.com",
+            "start": 17,
+            "end": 33,
+            "confidence": 0.6,
+        })
+        self.manager.add_entity({
+            "type": "EMAIL",
+            "value": "low@example.com",
+            "start": 34,
+            "end": 46,
+            "confidence": 0.4,
+        })
+
+        stats = self.manager.get_statistics()
+        conf_stats = stats["confidence_stats"]
+
+        self.assertEqual(conf_stats["high_confidence_count"], 1)
+        self.assertEqual(conf_stats["medium_confidence_count"], 1)
+        self.assertEqual(conf_stats["low_confidence_count"], 1)
+        self.assertAlmostEqual(
+            conf_stats["average"],
+            (0.9 + 0.6 + 0.4) / 3,
+            places=5,
+        )
+
 class TestUtils(unittest.TestCase):
     """Tests pour les fonctions utilitaires"""
     
@@ -245,6 +282,22 @@ class TestUtils(unittest.TestCase):
         
         errors = validate_entities(invalid_entities)
         self.assertGreater(len(errors), 0)
+
+    def test_generate_anonymization_stats_confidence_keys(self):
+        """Vérifie les clés standardisées dans generate_anonymization_stats"""
+        entities = [
+            {"type": "EMAIL", "value": "a", "start": 0, "end": 1, "confidence": 0.9},
+            {"type": "EMAIL", "value": "b", "start": 2, "end": 3, "confidence": 0.6},
+            {"type": "EMAIL", "value": "c", "start": 4, "end": 5, "confidence": 0.4},
+        ]
+
+        stats = generate_anonymization_stats(entities, text_length=10)
+        conf_stats = stats["confidence_stats"]
+
+        self.assertEqual(conf_stats["high_confidence_count"], 1)
+        self.assertEqual(conf_stats["medium_confidence_count"], 1)
+        self.assertEqual(conf_stats["low_confidence_count"], 1)
+        self.assertAlmostEqual(conf_stats["average"], (0.9 + 0.6 + 0.4) / 3, places=5)
 
 class TestDocumentAnonymizer(unittest.TestCase):
     """Tests pour l'anonymiseur de documents"""
