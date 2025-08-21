@@ -424,8 +424,8 @@ class RegexAnonymizer:
             for i, accepted in enumerate(filtered_entities):
                 if self._entities_overlap(entity, accepted):
                     # Résoudre le conflit selon des règles de priorité
-                    winner = self._resolve_overlap_conflict(entity, accepted)
-                    
+                    winner = self._resolve_conflict(entity, accepted)
+
                     if winner == entity:
                         filtered_entities[i] = entity
                     
