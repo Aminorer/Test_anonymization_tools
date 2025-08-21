@@ -1607,7 +1607,7 @@ class DocumentAnonymizer:
             self.processing_stats["documents_processed"] += 1
             self.processing_stats["entities_detected"] += len(entities)
             self.processing_stats["processing_time"] += processing_time
-            
+
             # Génération des statistiques
             stats = self._generate_processing_stats(entities, text, processing_time)
             
@@ -1632,6 +1632,59 @@ class DocumentAnonymizer:
                 "error": str(e),
                 "processing_time": processing_time
             }
+
+    def _generate_processing_stats(self, entities: List[Entity], text: str, processing_time: float) -> Dict[str, Any]:
+        """Générer des statistiques complètes de traitement"""
+        entity_types: Dict[str, int] = {}
+        confidence_values: List[float] = []
+        method_counts: Dict[str, int] = {}
+
+        for entity in entities:
+            # Types
+            entity_type = entity.type
+            entity_types[entity_type] = entity_types.get(entity_type, 0) + 1
+
+            # Confiance
+            if hasattr(entity, 'confidence') and entity.confidence is not None:
+                confidence_values.append(entity.confidence)
+
+            # Méthodes
+            method = getattr(entity, 'method', 'unknown')
+            method_counts[method] = method_counts.get(method, 0) + 1
+
+        # Statistiques de confiance
+        confidence_stats: Dict[str, Any] = {}
+        if confidence_values:
+            confidence_stats = {
+                "min": min(confidence_values),
+                "max": max(confidence_values),
+                "avg": sum(confidence_values) / len(confidence_values),
+                "std": self._calculate_std(confidence_values),
+                "high_confidence": len([c for c in confidence_values if c >= 0.8]),
+                "medium_confidence": len([c for c in confidence_values if 0.5 <= c < 0.8]),
+                "low_confidence": len([c for c in confidence_values if c < 0.5])
+            }
+
+        return {
+            "total_entities": len(entities),
+            "entity_types": entity_types,
+            "method_distribution": method_counts,
+            "confidence_stats": confidence_stats,
+            "processing_time": processing_time,
+            "entities_per_second": len(entities) / processing_time if processing_time > 0 else 0,
+            "text_length": len(text),
+            "most_common_type": max(entity_types, key=entity_types.get) if entity_types else None,
+            "ai_used": any(method in ['spacy', 'transformers'] for method in method_counts.keys())
+        }
+
+    def _calculate_std(self, values: List[float]) -> float:
+        """Calculer l'écart-type"""
+        if len(values) < 2:
+            return 0.0
+
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+        return variance ** 0.5
 
     def _create_anonymized_document(
         self,
