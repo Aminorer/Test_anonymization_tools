@@ -43,8 +43,10 @@ def configure_pytorch_safe():
         import torch
         
         # Configuration threads
-        torch.set_num_threads(1)
-        torch.set_num_interop_threads(1)
+        try:
+            torch.set_num_threads(1)
+        except Exception as thread_error:
+            logging.warning(f"PyTorch thread configuration warning: {thread_error}")
         
         # Désactiver JIT et optimisations
         if hasattr(torch.jit, "set_fuser"):
