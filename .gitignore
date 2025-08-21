@@ -1,42 +1,44 @@
-# Environnement virtuel
-.venv/
-venv/
-env/
-
-# Fichiers Python compilés
+# === Python ===
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pkl
+*.db
 
-# Fichiers de logs
-*.log
+# === Virtual Environments ===
+venv*/
+.env
+.venv
+env/
+ENV/
 
-# Fichiers temporaires
-*.tmp
+# === Backup / Temp Files ===
+*.bak
+*.backup
 *.swp
-*.swo
-*~
+*.log
+*.tmp
 
-# Configurations locales
-*.env
-.env.*
-
-# Caches
-.pytest_cache/
-.mypy_cache/
-coverage/
-.tox/
-.cache/
-
-# Jupyter notebooks checkpoints
+# === Jupyter / Notebook Checkpoints ===
 .ipynb_checkpoints/
 
-# VSCode settings
+# === VSCode ===
 .vscode/
-.history/
+*.code-workspace
 
-# Build / packaging
-dist/
+# === OS Specific ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Build / Distribution ===
 build/
+dist/
 *.egg-info/
+*.egg
+
+# === Project Specific ===
+# fichiers générés par Streamlit ou runtime
+.streamlit/
+*.lock

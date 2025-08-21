@@ -666,70 +666,68 @@ class EntityValidator:
     def validate_email(email: str) -> bool:
         """Validation email française"""
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        """Vérifier si deux entités se chevauchent"""
-        return not (entity1.end <= entity2.start or entity2.end <= entity1.start)
+        return bool(re.match(pattern, email))
     
-    def _resolve_overlap_conflict(self, entity1: Entity, entity2: Entity) -> Entity:
-        """Résoudre un conflit de chevauchement avec priorité intelligente"""
-        # Priorité 1: Types structurés (EMAIL, PHONE, etc.)
-        structured_types = {"EMAIL", "PHONE", "IBAN", "SIRET", "SIREN", "SSN", "TVA"}
+    @staticmethod
+    def validate_phone_fr(phone: str) -> bool:
+        """Validation téléphone français"""
+        # Nettoyer le numéro
+        digits = re.sub(r'\D', '', phone)
         
-        if entity1.type in structured_types and entity2.type not in structured_types:
-            return entity1
-        elif entity2.type in structured_types and entity1.type not in structured_types:
-            return entity2
+        # Formats français acceptés
+        if len(digits) == 10 and digits.startswith(('01', '02', '03', '04', '05', '06', '07', '08', '09')):
+            return True
+        elif len(digits) == 11 and digits.startswith('33') and digits[2] in '123456789':
+            return True
+        elif len(digits) == 12 and digits.startswith('0033'):
+            return True
         
-        # Priorité 2: Longueur (plus long = plus spécifique)
-        len1 = entity1.end - entity1.start
-        len2 = entity2.end - entity2.start
-        
-        if len1 != len2:
-            return entity1 if len1 > len2 else entity2
-        
-        # Priorité 3: Confiance
-        return entity1 if entity1.confidence >= entity2.confidence else entity2
+        return False
     
-    def _clean_entities(self, entities: List[Entity]) -> List[Entity]:
-        """Nettoyer et valider les entités"""
-        cleaned = []
+    @staticmethod
+    def validate_siren(siren: str) -> bool:
+        """Validation SIREN avec algorithme de Luhn"""
+        digits = re.sub(r'\D', '', siren)
         
-        for entity in entities:
-            # Nettoyer la valeur
-            cleaned_value = self._clean_entity_value(entity.value)
-            if cleaned_value and len(cleaned_value) > 1:
-                entity.value = cleaned_value
-                cleaned.append(entity)
+        if len(digits) != 9:
+            return False
         
-        return cleaned
+        # Algorithme de Luhn pour SIREN
+        total = 0
+        for i, digit in enumerate(digits):
+            num = int(digit)
+            if i % 2 == 1:
+                num *= 2
+                if num > 9:
+                    num = num // 10 + num % 10
+            total += num
+        
+        return total % 10 == 0
     
-    def _clean_entity_value(self, value: str) -> str:
-        """Nettoyer la valeur d'une entité"""
-        # Supprimer espaces début/fin
-        cleaned = value.strip()
+    @staticmethod
+    def validate_siret(siret: str) -> bool:
+        """Validation SIRET avec algorithme de Luhn"""
+        digits = re.sub(r'\D', '', siret)
         
-        # Supprimer ponctuation finale
-        cleaned = re.sub(r'[.,;:!?]+$', '', cleaned)
+        if len(digits) != 14:
+            return False
         
-        # Supprimer caractères de contrôle
-        cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
+        # Vérifier le SIREN (9 premiers chiffres)
+        siren = digits[:9]
+        if not EntityValidator.validate_siren(siren):
+            return False
         
-        return cleaned
-    
-    def anonymize_text(self, text: str, entities: List[Entity]) -> str:
-        """Anonymiser le texte en remplaçant les entités"""
-        # Trier par position décroissante pour éviter les décalages
-        sorted_entities = sorted(entities, key=lambda x: x.start, reverse=True)
+        # Algorithme de Luhn pour SIRET complet
+        total = 0
+        for i, digit in enumerate(digits):
+            num = int(digit)
+            if i % 2 == 0:  # Position inversée par rapport au SIREN
+                num *= 2
+                if num > 9:
+                    num = num // 10 + num % 10
+            total += num
         
-        anonymized_text = text
-        for entity in sorted_entities:
-            replacement = entity.replacement or f"[{entity.type}]"
-            anonymized_text = (
-                anonymized_text[:entity.start] + 
-                replacement + 
-                anonymized_text[entity.end:]
-            )
-        
-        return anonymized_text
+        return total % 10 == 0
 
 class AIAnonymizer:
     """Anonymiseur IA avec NER multi-modèles et gestion des conflits Streamlit"""
@@ -1145,7 +1143,7 @@ class AIAnonymizer:
         cleaned = value.strip()
         
         # Supprimer ponctuation finale
-        cleaned = re.sub(r'[.,;:!?]+, '', cleaned)
+        cleaned = re.sub(r'[.,;:!?]+$', '', cleaned)
         
         # Supprimer caractères bizarres
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
@@ -1632,7 +1630,7 @@ class DocumentAnonymizer:
         cleaned = value.strip()
         
         # Supprimer ponctuation finale
-        cleaned = re.sub(r'[.,;:!?]+, '', cleaned)
+        cleaned = re.sub(r'[.,;:!?]+$', '', cleaned)
         
         # Supprimer caractères bizarres
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
@@ -2278,8 +2276,6 @@ if __name__ == "__main__":
         
     except Exception as e:
         print(f"❌ Erreur lors des tests: {e}")
-        """Vérifier si deux entités se chevauchent"""
-        return not (entity1.end <= entity2.start or entity2.end <= entity1.start)
     
     def _resolve_overlap_conflict(self, entity1: Entity, entity2: Entity) -> Entity:
         """Résoudre un conflit de chevauchement avec priorité intelligente"""
@@ -2329,11 +2325,21 @@ if __name__ == "__main__":
     
     def anonymize_text(self, text: str, entities: List[Entity]) -> str:
         """Anonymiser le texte en remplaçant les entités"""
+        if not text or not entities:
+            return text
+            
         # Trier par position décroissante pour éviter les décalages
         sorted_entities = sorted(entities, key=lambda x: x.start, reverse=True)
         
+        # Vérifier la validité des positions avant anonymisation
+        text_length = len(text)
+        valid_entities = [
+            entity for entity in sorted_entities
+            if 0 <= entity.start < text_length and entity.start < entity.end <= text_length
+        ]
+        
         anonymized_text = text
-        for entity in sorted_entities:
+        for entity in valid_entities:
             replacement = entity.replacement or f"[{entity.type}]"
             anonymized_text = (
                 anonymized_text[:entity.start] + 
@@ -2757,7 +2763,7 @@ class AIAnonymizer:
         cleaned = value.strip()
         
         # Supprimer ponctuation finale
-        cleaned = re.sub(r'[.,;:!?]+, '', cleaned)
+        cleaned = re.sub(r'[.,;:!?]+$', '', cleaned)
         
         # Supprimer caractères bizarres
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
@@ -3244,7 +3250,7 @@ class DocumentAnonymizer:
         cleaned = value.strip()
         
         # Supprimer ponctuation finale
-        cleaned = re.sub(r'[.,;:!?]+, '', cleaned)
+        cleaned = re.sub(r'[.,;:!?]+$', '', cleaned)
         
         # Supprimer caractères bizarres
         cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned)
@@ -3328,4 +3334,3 @@ class DocumentAnonymizer:
         
         return resolved
     
-    def _entities_overlap(self, entity1: Entity, entity2: Entity) -> bool:
