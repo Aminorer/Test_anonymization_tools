@@ -888,9 +888,10 @@ def display_entities_tab_advanced():
                 with entity_col1:
                     # Checkbox de sélection
                     is_selected = st.checkbox(
-                        "", 
+                        "Sélectionner l'entité",
                         value=select_all,
-                        key=f"select_entity_{i}_{entity['id']}"
+                        key=f"select_entity_{i}_{entity['id']}",
+                        label_visibility="collapsed",
                     )
                     if is_selected:
                         selected_entities.append(entity)
