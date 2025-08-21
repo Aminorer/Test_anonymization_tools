@@ -162,7 +162,8 @@ if PYTORCH_AVAILABLE:
 ENTITY_PATTERNS = {
     "EMAIL": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
     "PHONE": r'\b(?:\+33|0)[1-9](?:[0-9\s.-]{8,13})\b',
-    "IBAN": r'\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]*\b'
+    "IBAN": r'\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]*\b',
+    "DATE": r'\b(?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b'
 }
 
 ENTITY_COLORS = {
@@ -175,8 +176,9 @@ DEFAULT_REPLACEMENTS = {
     "PERSON": "[PERSONNE]",
     "ORG": "[ORGANISATION]",
     "EMAIL": "[EMAIL]",
-    "PHONE": "[TÉLÉPHONE]",
-    "IBAN": "[IBAN]"
+    "PHONE": "[PHONE]",
+    "IBAN": "[IBAN]",
+    "DATE": "[DATE]"
 }
 
 # === PATTERNS FRANÇAIS AMÉLIORÉS ===
@@ -300,7 +302,14 @@ class RegexAnonymizer:
         
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
-        
+
+    def anonymize_text(self, text: str, entities: List[Entity]) -> str:
+        """Anonymise le texte en remplaçant les entités détectées"""
+        for entity in sorted(entities, key=lambda e: e.start, reverse=True):
+            replacement = entity.replacement if entity.replacement else f"[{entity.type}]"
+            text = text[:entity.start] + replacement + text[entity.end:]
+        return text
+
     def _clean_entities(self, entities: List[Entity]) -> List[Entity]:
         """Nettoyage et validation finale des entités détectées"""
         cleaned = []
@@ -1608,11 +1617,26 @@ class DocumentAnonymizer:
             processing_time = time.time() - start_time
             logging.error(f"Erreur traitement document: {str(e)}")
             return {
-                "status": "error", 
+                "status": "error",
                 "error": str(e),
                 "processing_time": processing_time
             }
-    
+
+    def _create_anonymized_document(
+        self,
+        original_path: str,
+        anonymized_text: str,
+        metadata: Dict,
+        entities: Optional[List[Entity]] = None,
+    ) -> str:
+        """Créer un fichier texte anonymisé basique"""
+        output_path = os.path.join(
+            self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.txt"
+        )
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(anonymized_text)
+        return output_path
+
     def _preprocess_text(self, text: str) -> str:
         """Prétraitement optimisé du texte français"""
         # Normalisation des espaces
