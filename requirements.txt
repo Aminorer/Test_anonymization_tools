@@ -1,50 +1,171 @@
-# Interface Streamlit
-streamlit>=1.28.0
+# requirements.txt - VERSION COMPLÈTE AVEC NER FONCTIONNEL
+# Anonymiseur de Documents Juridiques v2.0
+# Toutes les fonctionnalités incluses avec résolution des conflits PyTorch/Streamlit
+
+# === INTERFACE STREAMLIT (OBLIGATOIRE) ===
+# requirements.txt - VERSION COMPLÈTE AVEC NER FONCTIONNEL
+# Anonymiseur de Documents Juridiques v2.0
+# Toutes les fonctionnalités incluses avec résolution des conflits PyTorch/Streamlit
+
+# === INTERFACE STREAMLIT (OBLIGATOIRE) ===
+streamlit>=1.28.0,<2.0.0
 streamlit-aggrid>=0.3.4
 
-# Traitement de documents
+# === TRAITEMENT DE DOCUMENTS (OBLIGATOIRE) ===
 python-docx>=0.8.11
 pdfplumber>=0.7.6
 pdf2docx>=0.5.6
 PyMuPDF>=1.23.0
 
-# Intelligence Artificielle (optionnel)
-transformers>=4.21.0
-torch>=1.12.0
-torch-audio>=0.12.0
-tokenizers>=0.13.0
+# === INTELLIGENCE ARTIFICIELLE (NER) ===
+# PyTorch - Version compatible Streamlit
+torch>=1.12.0,<2.1.0
+torchvision>=0.13.0,<0.16.0
+torchaudio>=0.12.0,<0.15.0
 
-# Traitement de données
-pandas>=1.5.0
-numpy>=1.24.0
+# Transformers - Modèles NER
+transformers>=4.21.0,<5.0.0
+tokenizers>=0.13.0,<1.0.0
+accelerate>=0.20.0
+sentencepiece>=0.1.97
+
+# SpaCy - Alternative stable (recommandé pour français)
+spacy>=3.4.0,<4.0.0
+# Modèles SpaCy français (optionnels, à installer séparément)
+# fr-core-news-lg @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_lg-3.6.0/fr_core_news_lg-3.6.0-py3-none-any.whl
+# fr-core-news-sm @ https://github.com/explosion/spacy-models/releases/download/fr_core_news_sm-3.6.0/fr_core_news_sm-3.6.0-py3-none-any.whl
+
+# === TRAITEMENT DE DONNÉES (OBLIGATOIRE) ===
+pandas>=1.5.0,<3.0.0
+numpy>=1.24.0,<2.0.0
 openpyxl>=3.0.10
 
-# Visualisation
-plotly>=5.15.0
-matplotlib>=3.6.0
-seaborn>=0.12.0
+# === VISUALISATION ET GRAPHIQUES ===
+plotly>=5.15.0,<6.0.0
+matplotlib>=3.6.0,<4.0.0
+seaborn>=0.12.0,<1.0.0
 
-# Utilitaires
-Pillow>=9.5.0
-requests>=2.28.0
-python-dotenv>=1.0.0
-psutil>=5.9.0
+# === TRAITEMENT D'IMAGES ET DOCUMENTS ===
+Pillow>=9.5.0,<11.0.0
+reportlab>=4.0.0  # Pour génération PDF
 
-# Validation et sérialisation
-pydantic>=1.10.0
-jsonschema>=4.17.0
+# === UTILITAIRES SYSTÈME ===
+psutil>=5.9.0,<6.0.0
+requests>=2.28.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
 
-# Logging et monitoring
-loguru>=0.7.0
+# === VALIDATION ET SÉRIALISATION ===
+pydantic>=1.10.0,<3.0.0
+jsonschema>=4.17.0,<5.0.0
 
-# Sécurité
-cryptography>=41.0.0
+# === SÉCURITÉ ET CHIFFREMENT ===
+cryptography>=41.0.0,<43.0.0
+hashlib-compat>=1.0.0
 
-# Tests (optionnel)
-pytest>=7.4.0
-pytest-cov>=4.1.0
+# === LOGGING ET MONITORING ===
+loguru>=0.7.0,<1.0.0
 
-# Développement (optionnel)
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.5.0
+# === TRAITEMENT TEXTE AVANCÉ ===
+regex>=2023.0.0
+unidecode>=1.3.0
+ftfy>=6.1.0  # Correction encodage
+
+# === OPTIMISATION PERFORMANCE ===
+cachetools>=5.3.0,<6.0.0
+joblib>=1.3.0,<2.0.0
+
+# === FORMATS DE DONNÉES SUPPLÉMENTAIRES ===
+xlsxwriter>=3.1.0
+lxml>=4.9.0
+beautifulsoup4>=4.12.0
+
+# === SCIENCE DES DONNÉES (OPTIONNEL) ===
+scikit-learn>=1.3.0,<2.0.0
+scipy>=1.10.0,<2.0.0
+
+# === DÉVELOPPEMENT ET TESTS (OPTIONNEL) ===
+# Décommentez pour le développement
+# pytest>=7.4.0,<8.0.0
+# pytest-cov>=4.1.0,<5.0.0
+# black>=23.0.0,<24.0.0
+# flake8>=6.0.0,<7.0.0
+# mypy>=1.5.0,<2.0.0
+# pre-commit>=3.3.0,<4.0.0
+
+# === DÉPLOIEMENT (OPTIONNEL) ===
+# gunicorn>=21.0.0,<22.0.0  # Pour déploiement production
+# uvicorn>=0.23.0,<1.0.0    # Alternative ASGI
+
+# === NOTES D'INSTALLATION ===
+# 
+# INSTALLATION RECOMMANDÉE:
+# 1. Créez un environnement virtuel:
+#    python -m venv venv_anonymizer
+#    source venv_anonymizer/bin/activate  # Linux/Mac
+#    venv_anonymizer\Scripts\activate     # Windows
+#
+# 2. Mettez à jour pip:
+#    python -m pip install --upgrade pip
+#
+# 3. Installez les dépendances:
+#    pip install -r requirements.txt
+#
+# 4. Installez les modèles SpaCy français (recommandé):
+#    python -m spacy download fr_core_news_lg
+#    python -m spacy download fr_core_news_sm
+#
+# 5. Vérifiez l'installation:
+#    python -c "import streamlit, torch, transformers, spacy; print('✅ Tout est installé!')"
+#
+# RÉSOLUTION DE PROBLÈMES:
+#
+# Si erreurs PyTorch/Streamlit:
+# - Installez torch en premier: pip install torch torchvision torchaudio
+# - Puis le reste: pip install -r requirements.txt
+#
+# Si problèmes mémoire:
+# - Utilisez uniquement SpaCy: pip install spacy fr_core_news_sm
+# - Évitez les gros modèles Transformers
+#
+# Si erreurs de compilation:
+# - Windows: Installez Visual Studio Build Tools
+# - Linux: sudo apt-get install build-essential
+# - macOS: xcode-select --install
+#
+# CONFIGURATIONS ALTERNATIVES:
+#
+# Configuration légère (sans IA lourde):
+# streamlit>=1.28.0
+# python-docx>=0.8.11
+# pdfplumber>=0.7.6
+# pandas>=1.5.0
+# plotly>=5.15.0
+# spacy>=3.4.0
+#
+# Configuration IA seulement (sans PDF):
+# streamlit>=1.28.0
+# torch>=1.12.0
+# transformers>=4.21.0
+# spacy>=3.4.0
+# pandas>=1.5.0
+#
+# VERSIONS PYTHON SUPPORTÉES:
+# Python 3.8, 3.9, 3.10, 3.11
+# Recommandé: Python 3.10
+#
+# ESPACE DISQUE REQUIS:
+# - Installation de base: ~2GB
+# - Avec modèles IA complets: ~5GB
+# - Avec tous les modèles SpaCy: ~1GB supplémentaire
+#
+# RAM RECOMMANDÉE:
+# - Minimum: 4GB
+# - Recommandé: 8GB
+# - Optimal: 16GB+ (pour gros documents)
+#
+# PLATEFORMES TESTÉES:
+# ✅ Windows 10/11
+# ✅ Ubuntu 20.04/22.04
+# ✅ macOS 12+
+# ✅ Google Colab
+# ✅ Docker
