@@ -47,7 +47,8 @@ def configure_pytorch_safe():
         torch.set_num_interop_threads(1)
         
         # Désactiver JIT et optimisations
-        torch.jit.set_fuser('fuser0')
+        if hasattr(torch.jit, "set_fuser"):
+            torch.jit.set_fuser("fuser0")
         torch._C._jit_set_profiling_mode(False)
         torch._C._jit_set_profiling_executor(False)
         
