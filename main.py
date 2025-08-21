@@ -761,8 +761,7 @@ def display_results_advanced():
             st.metric("Haute Confiance (≥80%)", high_conf, help="Entités très fiables")
         
         with conf_col2:
-            total = stats["total_entities"]
-            medium_conf = total - high_conf - stats["confidence_stats"]["low_confidence_count"]
+            medium_conf = stats["confidence_stats"]["medium_confidence_count"]
             st.metric("Confiance Moyenne (50-80%)", medium_conf, help="Entités moyennement fiables")
         
         with conf_col3:

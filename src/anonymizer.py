@@ -570,11 +570,11 @@ class RegexAnonymizer:
             confidence_stats = {
                 "min": min(confidence_values),
                 "max": max(confidence_values),
-                "avg": sum(confidence_values) / len(confidence_values),
+                "average": sum(confidence_values) / len(confidence_values),
                 "std": self._calculate_std(confidence_values),
-                "high_confidence": len([c for c in confidence_values if c >= 0.8]),
-                "medium_confidence": len([c for c in confidence_values if 0.5 <= c < 0.8]),
-                "low_confidence": len([c for c in confidence_values if c < 0.5])
+                "high_confidence_count": len([c for c in confidence_values if c >= 0.8]),
+                "medium_confidence_count": len([c for c in confidence_values if 0.5 <= c < 0.8]),
+                "low_confidence_count": len([c for c in confidence_values if c < 0.5])
             }
         
         return {
@@ -1665,11 +1665,11 @@ class DocumentAnonymizer:
             confidence_stats = {
                 "min": min(confidence_values),
                 "max": max(confidence_values),
-                "avg": sum(confidence_values) / len(confidence_values),
+                "average": sum(confidence_values) / len(confidence_values),
                 "std": self._calculate_std(confidence_values),
-                "high_confidence": len([c for c in confidence_values if c >= 0.8]),
-                "medium_confidence": len([c for c in confidence_values if 0.5 <= c < 0.8]),
-                "low_confidence": len([c for c in confidence_values if c < 0.5])
+                "high_confidence_count": len([c for c in confidence_values if c >= 0.8]),
+                "medium_confidence_count": len([c for c in confidence_values if 0.5 <= c < 0.8]),
+                "low_confidence_count": len([c for c in confidence_values if c < 0.5])
             }
 
         return {
