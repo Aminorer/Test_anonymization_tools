@@ -1848,7 +1848,7 @@ class DocumentAnonymizer:
         entities: Optional[List[Entity]]
             Liste d'entités détectées.
         export_format: str
-            Format d'export (txt, docx, pdf).
+            Format d'export (txt, docx, pdf - nécessite le paquet fpdf).
         watermark: Optional[str]
             Filigrane à ajouter au document.
         audit: bool
@@ -2040,7 +2040,9 @@ class DocumentAnonymizer:
             try:
                 from fpdf import FPDF
             except ImportError as e:
-                raise RuntimeError("PDF export requires fpdf") from e
+                raise RuntimeError(
+                    "PDF export requires the 'fpdf' package. Install it with 'pip install fpdf'."
+                ) from e
 
             output_path = os.path.join(
                 self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.pdf"
@@ -2206,7 +2208,9 @@ class DocumentAnonymizer:
             try:
                 from fpdf import FPDF
             except ImportError as e:
-                raise Exception("Export PDF non supporté") from e
+                raise RuntimeError(
+                    "PDF export requires the 'fpdf' package. Install it with 'pip install fpdf'."
+                ) from e
 
             pdf = FPDF()
             pdf.set_auto_page_break(auto=True, margin=15)
