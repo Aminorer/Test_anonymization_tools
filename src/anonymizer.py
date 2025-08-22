@@ -164,10 +164,10 @@ if PYTORCH_AVAILABLE:
 # === IMPORTS LOCAUX ===
 # Assuming these are in a config.py file
 ENTITY_PATTERNS = {
-    "EMAIL": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-    "PHONE": r'\b(?:\+33|0)[1-9](?:[0-9\s.-]{8,13})\b',
-    "IBAN": r'\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}[A-Z0-9]*\b',
-    "DATE": r'\b(?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2})\b'
+    "EMAIL": r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",  # RFC 5322
+    "PHONE": r"\b(?:\+33|0)(?:[1-5]|[67])(?:[ .-]?\d{2}){4}\b",  # Plan national ARCEP
+    "IBAN": r"\bFR\d{2}\s?\d{5}\s?\d{5}\s?[A-Z0-9]{11}\s?\d{2}\b",  # IBAN FR ISO 13616
+    "DATE": r"\b(?:0?[1-9]|[12][0-9]|3[01])[-/](?:0?[1-9]|1[0-2])[-/](?:19|20)\d{2}\b"  # JJ/MM/AAAA
 }
 
 ENTITY_COLORS = {
@@ -187,24 +187,29 @@ DEFAULT_REPLACEMENTS = {
 
 # === PATTERNS FRANÇAIS AMÉLIORÉS ===
 FRENCH_ENTITY_PATTERNS = {
-    **{k: v for k, v in ENTITY_PATTERNS.items() if k != "LOC"},
-    
+    **ENTITY_PATTERNS,
+
     # Noms français avec titres de civilité
-    "PERSON_FR": r'\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][a-zàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþß]+(?:\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][a-zàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþß]+)*',
-    
+    "PERSON_FR": r"\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*",  # Titres de civilité
+
     # Organisations françaises spécifiques
-    "ORG_FR": r'\b(?:SARL|SAS|SA|SNC|EURL|SASU|SCI|SELARL|SELCA|SELAS|Association|Société|Entreprise|Cabinet|Étude|Bureau|Groupe|Fondation|Institut|Centre|Établissement)\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][A-Za-zÀ-ÿ\s\-\'&]+',
-    
+    "ORG_FR": r"\b(?:SARL|SAS|SA|SNC|EURL|SASU|SCI|SELARL|SELCA|SELAS|Association|Société|Entreprise|Cabinet|Étude|Bureau|Groupe|Fondation|Institut|Centre|Établissement)\s+[A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s\-'&]+",  # Formes juridiques
+
     # Numéros français spécialisés
-    "SSN_FR": r'\b[12]\s?\d{2}\s?(?:0[1-9]|1[0-2])\s?(?:0[1-9]|[12]\d|3[01])\s?\d{3}\s?\d{3}\s?\d{2}\b',
-    "SIRET_FR": r'\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b',
-    "SIREN_FR": r'\b\d{3}\s?\d{3}\s?\d{3}\b',
-    "TVA_FR": r'\bFR\s?\d{2}\s?\d{9}\b',
-    
+    "SSN_FR": r"\b[12]\d{2}(?:0[1-9]|1[0-2])(?:[0-9]{2}|2A|2B)\d{3}\d{3}\d{2}\b",  # NIR 15 chiffres
+    "SIRET_FR": r"\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b",  # SIRET 14 chiffres
+    "SIREN_FR": r"\b\d{3}\s?\d{3}\s?\d{3}\b",  # SIREN 9 chiffres
+    "TVA_FR": r"\bFR\d{2}\d{9}\b",  # TVA intracommunautaire
+
+    # Adresses et téléphones français
+    "FRENCH_ADDRESS": r"\b\d{1,4}\s?(?:bis|ter|quater)?\s+(?:rue|avenue|boulevard|place|square|impasse|allée|chemin|route|passage|villa|cité|quai|esplanade|parvis|cours|mail|faubourg)\s+[A-Za-zÀ-ÿ'\-\s]+,?\s\d{5}\s[A-Za-zÀ-ÿ'\-\s]+\b",  # Adresse postale
+    "FRENCH_MOBILE": r"\b(?:\+33|0)[67](?:[ .-]?\d{2}){4}\b",  # Mobile 06/07
+    "FRENCH_LANDLINE": r"\b(?:\+33|0)[1-5](?:[ .-]?\d{2}){4}\b",  # Fixe 01-05
+
     # Références juridiques
-    "ARTICLE_LOI": r'\b[Aa]rticle\s+\d+(?:-\d+)?\s+(?:du\s+)?(?:Code\s+)?[A-Za-zÀ-ÿ\s]+\b',
-    "NUMERO_DOSSIER": r'\b(?:n°|N°|numéro|Numéro)\s*:?\s*\d{2,}/\d{2,}(?:/\d{2,})?\b',
-    "RG_NUMBER": r'\bRG\s*:?\s*\d{2}/\d{5}\b',
+    "ARTICLE_LOI": r"\b[Aa]rt(?:icle)?\.?\s+[LDR]\d+(?:-\d+)*\s+du\s+Code\s+[A-Za-zÀ-ÿ\s]+\b",  # Article de loi
+    "NUMERO_DOSSIER": r"\b(?:n°|N°|numéro|Numéro)\s*:?\s*\d{2,}/\d{2,}(?:/\d{2,})?\b",  # Numéro de dossier
+    "RG_NUMBER": r"\bRG\s*:?\s*\d{2}/\d{5}\b"  # Référence de greffe
 }
 
 # === MODÈLES IA OPTIMISÉS ===
