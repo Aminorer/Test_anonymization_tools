@@ -50,9 +50,20 @@ class TestRegexAnonymizer(unittest.TestCase):
         """Test de détection de dates"""
         text = "Signé le 15/03/2024 et expirant le 31/12/2025"
         entities = self.anonymizer.detect_entities(text)
-        
+
         date_entities = [e for e in entities if e.type == "DATE"]
         self.assertEqual(len(date_entities), 2)
+
+    def test_date_vs_article_number(self):
+        """Les numéros d'article ne doivent pas être détectés comme des dates"""
+        text = (
+            "Selon l'article 12/03/2014 du code civil, l'accord est signé le 15/03/2014."
+        )
+        entities = self.anonymizer.detect_entities(text)
+
+        date_entities = [e for e in entities if e.type == "DATE"]
+        self.assertEqual(len(date_entities), 1)
+        self.assertEqual(date_entities[0].value, "15/03/2014")
     
     def test_iban_detection(self):
         """Test de détection d'IBAN"""
