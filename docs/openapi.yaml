@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: API d'Anonymisation de Documents
+  version: '1.0.0'
+  description: |
+    Spécification des routes pour le service d'anonymisation.
+    Les routes marquées avec `x-planned: true` sont prévues mais non encore
+    implémentées.
+servers:
+  - url: http://localhost:8000
+paths:
+  /health:
+    get:
+      summary: Vérifie l'état du service
+      responses:
+        '200':
+          description: Service opérationnel
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /anonymize:
+    post:
+      summary: Anonymise un document fourni
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mode:
+                  type: string
+                  description: Méthode de détection
+                  enum: [regex, ai]
+                  default: regex
+                audit:
+                  type: boolean
+                  description: Générer un rapport d'audit
+                  default: false
+      responses:
+        '200':
+          description: Document anonymisé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  anonymized_text:
+                    type: string
+                  entities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Entity'
+  /entities:
+    get:
+      summary: Liste les entités détectées lors de la dernière anonymisation
+      x-planned: true
+      responses:
+        '200':
+          description: Tableau des entités détectées
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Entity'
+  /export:
+    post:
+      summary: Exporte un document anonymisé dans un format donné
+      description: Route prévue pour une future fonctionnalité d'export.
+      x-planned: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                document_id:
+                  type: string
+                format:
+                  type: string
+                  enum: [pdf, docx, txt]
+      responses:
+        '200':
+          description: Fichier généré
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+components:
+  schemas:
+    Entity:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        start:
+          type: integer
+        end:
+          type: integer
+        confidence:
+          type: number
+      required: [id, type, value]
