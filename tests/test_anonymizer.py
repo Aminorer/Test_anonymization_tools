@@ -20,6 +20,7 @@ from src.utils import (
     validate_entities,
     generate_anonymization_stats,
     serialize_entity_mapping,
+    compute_confidence,
 )
 
 class TestRegexAnonymizer(unittest.TestCase):
@@ -69,9 +70,67 @@ class TestRegexAnonymizer(unittest.TestCase):
         """Test de détection d'IBAN"""
         text = "Virement sur FR1420041010050500013M02606"
         entities = self.anonymizer.detect_entities(text)
-        
+
         iban_entities = [e for e in entities if e.type == "IBAN"]
         self.assertEqual(len(iban_entities), 1)
+
+        text_invalid = "Virement sur FR1420041010050500013M02607"
+        entities_invalid = self.anonymizer.detect_entities(text_invalid)
+        self.assertFalse(any(e.type == "IBAN" for e in entities_invalid))
+
+    def test_ssn_detection_valid_invalid(self):
+        """Vérifie la détection des NIR valides et le rejet des invalides"""
+        valid_text = (
+            "Le salarié identifié par le NIR 184127645108946 est employé."  # NIR valide
+        )
+        entities = self.anonymizer.detect_entities(valid_text)
+        ssn_values = [e.value for e in entities if e.type == "SSN"]
+        self.assertIn("184127645108946", ssn_values)
+
+        invalid_text = "NIR 184127645108900 mentionné à titre indicatif."
+        entities_invalid = self.anonymizer.detect_entities(invalid_text)
+        self.assertFalse(any(e.type == "SSN" for e in entities_invalid))
+
+    def test_siren_siret_detection_valid_invalid(self):
+        """Détection précise des numéros SIREN et SIRET"""
+        text = (
+            "La société DEMO SARL, SIREN 100000009, dispose du SIRET 10000000910008."
+        )
+        entities = self.anonymizer.detect_entities(text)
+        siren_values = [e.value for e in entities if e.type == "SIREN"]
+        siret_values = [e.value for e in entities if e.type == "SIRET"]
+        self.assertIn("100000009", siren_values)
+        self.assertIn("10000000910008", siret_values)
+
+        invalid_text = (
+            "SIREN 123456789 et SIRET 12345678900000 doivent être rejetés."
+        )
+        entities_invalid = self.anonymizer.detect_entities(invalid_text)
+        self.assertFalse(any(e.type in {"SIREN", "SIRET"} for e in entities_invalid))
+
+    def test_date_edge_cases(self):
+        """Détecte les dates valides et ignore les dates impossibles"""
+        text = "Le 29/02/2020 est valide mais 31/02/2020 est invalide"
+        entities = self.anonymizer.detect_entities(text)
+        dates = [e.value for e in entities if e.type == "DATE"]
+        self.assertIn("29/02/2020", dates)
+        self.assertNotIn("31/02/2020", dates)
+
+    def test_address_detection(self):
+        """Détection d'adresses françaises complètes"""
+        text = (
+            "Siège social: 10 bis rue de la Paix 75002 Paris. Autre mention: rue de la Paix."
+        )
+        entities = self.anonymizer.detect_entities(text)
+        addresses = [e.value for e in entities if e.type == "FRENCH_ADDRESS"]
+        self.assertIn("10 bis rue de la Paix 75002 Paris", addresses)
+        self.assertTrue(all("rue de la Paix" != addr for addr in addresses))
+
+    def test_whitelisted_legal_terms(self):
+        """Les termes juridiques connus ne génèrent pas de faux positifs"""
+        text = "Selon le Code Civil et le Tribunal Administratif, ..."
+        leaks = self.anonymizer._detect_potential_leaks(text)
+        self.assertEqual(leaks, [])
     
     def test_anonymization(self):
         """Test d'anonymisation complète"""
@@ -351,6 +410,12 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(conf_stats["medium_confidence_count"], 1)
         self.assertEqual(conf_stats["low_confidence_count"], 1)
         self.assertAlmostEqual(conf_stats["average"], (0.9 + 0.6 + 0.4) / 3, places=5)
+
+    def test_compute_confidence_agreement(self):
+        """La confiance augmente lorsque regex et NER concordent"""
+        score_agree = compute_confidence(1.0, 1.0, 1.0)
+        score_disagree = compute_confidence(1.0, 1.0, 0.0)
+        self.assertGreater(score_agree, score_disagree)
 
     def test_serialize_entity_mapping(self):
         """Vérifie la sérialisation du mapping d'entités"""
