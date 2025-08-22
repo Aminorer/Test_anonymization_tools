@@ -19,6 +19,12 @@ SUPPORTED_FORMATS = ["pdf", "docx", "doc", "txt"]
 MAX_TEXT_LENGTH = 10_000_000  # 10M caractères max
 TEMP_FILE_RETENTION = 3600  # 1 heure en secondes
 
+# === NORMALISATION DES NOMS ===
+NAME_NORMALIZATION = {
+    "titles": ["mr", "mme", "dr", "me", "maître"],
+    "similarity_threshold": 0.85,
+}
+
 # === PATTERNS REGEX OPTIMISÉS (SANS LOC COMME DEMANDÉ) ===
 ENTITY_PATTERNS = {
     # Données de contact

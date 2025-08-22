@@ -156,7 +156,25 @@ export NER_DEVICE="cpu"  # ou "cuda" si GPU disponible
 # Configuration application
 export MAX_FILE_SIZE="26214400"  # 25 MB
 export TEMP_RETENTION="3600"     # 1 heure
+# Normalisation des noms
+export ANONYMIZER_TITLES="mr,mme,dr,me,maître"  # titres supprimés par défaut
+export ANONYMIZER_SIMILARITY_THRESHOLD="0.85"     # seuil de similarité pour le regroupement
 ```
+
+Les mêmes paramètres peuvent être fournis directement au constructeur de
+`RegexAnonymizer` :
+
+```python
+from src.anonymizer import RegexAnonymizer
+
+anonymizer = RegexAnonymizer(
+    titles=["sir", "madame"],
+    score_cutoff=0.9,
+)
+```
+
+Par défaut, les titres supprimés sont `mr`, `mme`, `dr`, `me`, `maître` et le
+seuil de similarité est `0.85`.
 
 ### **Personnalisation des Entités**
 Modifiez `src/config.py` pour :
