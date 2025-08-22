@@ -1884,16 +1884,20 @@ class DocumentAnonymizer:
                         if getattr(ent, "replacement", None):
                             replacement_map[ent.value] = ent.replacement
 
-                # Fonction de remplacement dans un paragraphe
+                # Utilitaire de remplacement simple
+                def _replace_text(text: str) -> str:
+                    if not text:
+                        return text
+                    for original, token in replacement_map.items():
+                        if original in text:
+                            text = text.replace(original, token)
+                    return text
+
                 def _replace_in_paragraph(paragraph):
                     for run in paragraph.runs:
-                        text = run.text
-                        for original, token in replacement_map.items():
-                            if original in text:
-                                text = text.replace(original, token)
-                        run.text = text
+                        run.text = _replace_text(run.text)
 
-                # Corps du document
+                # Remplacement basique pour le corps du document
                 for paragraph in doc.paragraphs:
                     _replace_in_paragraph(paragraph)
 
@@ -1927,7 +1931,62 @@ class DocumentAnonymizer:
                                 for paragraph in cell.paragraphs:
                                     _replace_in_paragraph(paragraph)
 
-                # Ajout optionnel de métadonnées et statistiques
+                # Parcours supplémentaire des parties XML (zones de texte, formes, notes, commentaires)
+                WORD_NS = {
+                    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                }
+
+                def _replace_in_element(element):
+                    for t in element.xpath(".//w:t", namespaces=WORD_NS):
+                        t.text = _replace_text(t.text)
+
+                # Corps principal (inclut les zones de texte et formes)
+                _replace_in_element(doc.element.body)
+
+                # Autres parties de l'histoire du document
+                for part in getattr(doc.part, "story_parts", []):
+                    _replace_in_element(part.element)
+
+                # Formes inline
+                for shape in getattr(doc, "inline_shapes", []):
+                    _replace_in_element(shape._inline)
+
+                # Notes de bas de page / commentaires si non couverts
+                if hasattr(doc.part, "footnotes_part"):
+                    _replace_in_element(doc.part.footnotes_part.element)
+                if hasattr(doc.part, "endnotes_part"):
+                    _replace_in_element(doc.part.endnotes_part.element)
+                if hasattr(doc.part, "comments_part"):
+                    _replace_in_element(doc.part.comments_part.element)
+
+                # Métadonnées et propriétés personnalisées
+                try:
+                    core = doc.core_properties
+                    for attr in (
+                        "title",
+                        "subject",
+                        "creator",
+                        "last_modified_by",
+                        "keywords",
+                        "category",
+                        "comments",
+                    ):
+                        val = getattr(core, attr)
+                        if isinstance(val, str):
+                            setattr(core, attr, _replace_text(val))
+                except Exception:
+                    pass
+
+                try:
+                    custom_props = doc.custom_properties  # type: ignore[attr-defined]
+                    for name in list(custom_props):
+                        val = custom_props[name]
+                        if isinstance(val, str):
+                            custom_props[name] = _replace_text(val)
+                except Exception:
+                    pass
+
+                # Ajout optionnel de métadonnées et statistiques dans le document
                 if audit and metadata:
                     doc.add_page_break()
                     doc.add_paragraph("=== AUDIT REPORT ===")
