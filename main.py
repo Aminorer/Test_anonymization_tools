@@ -280,10 +280,10 @@ def init_session_state():
         "anonymizer": None,
         "last_file_hash": None,
         "export_options": {
-            "add_watermark": True,
+            "add_watermark": False,
             "watermark_text": "DOCUMENT ANONYMISÉ - CONFORME RGPD",
-            "generate_report": True,
-            "include_statistics": True
+            "generate_report": False,
+            "include_statistics": False
         }
     }
     
@@ -1408,6 +1408,8 @@ def display_export_section_advanced():
             value=st.session_state.export_options["add_watermark"],
             key="export_watermark"
         )
+
+        st.session_state.export_options["add_watermark"] = add_watermark
         
         if add_watermark:
             watermark_text = st.text_input(
@@ -1423,6 +1425,8 @@ def display_export_section_advanced():
             value=st.session_state.export_options["generate_report"],
             key="export_report"
         )
+
+        st.session_state.export_options["generate_report"] = generate_report
         
         # Statistiques
         include_stats = st.checkbox(
@@ -1430,6 +1434,8 @@ def display_export_section_advanced():
             value=st.session_state.export_options["include_statistics"],
             key="export_stats"
         )
+
+        st.session_state.export_options["include_statistics"] = include_stats
         
         # Format d'export
         export_format = st.selectbox(
