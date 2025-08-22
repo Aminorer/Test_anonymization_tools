@@ -324,7 +324,9 @@ class RegexAnonymizer:
         self.entity_mapping = {}
         self.entity_counters = {}
 
-        for entity in sorted(entities, key=lambda e: e.start, reverse=True):
+        # Première passe : construire le mapping des entités
+        replacements: List[Tuple[str, str]] = []
+        for entity in entities:
             type_map = self.entity_mapping.setdefault(entity.type, {})
 
             if entity.value in type_map:
@@ -336,7 +338,11 @@ class RegexAnonymizer:
                 type_map[entity.value] = token
 
             entity.replacement = token
-            text = text[:entity.start] + token + text[entity.end:]
+            replacements.append((entity.value, token))
+
+        # Deuxième passe : appliquer les remplacements directement sur les valeurs
+        for original, token in sorted(set(replacements), key=lambda x: len(x[0]), reverse=True):
+            text = re.sub(re.escape(original), token, text)
 
         return text, self.entity_mapping
 
