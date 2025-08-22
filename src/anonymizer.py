@@ -1560,7 +1560,9 @@ class DocumentAnonymizer:
         self.prefer_french = prefer_french
         # Mapping des entités pour assurer la cohérence des remplacements
         self.entity_mapping: Dict[str, Dict[str, str]] = {}
-        
+        # Compteurs accessibles des jetons générés par type d'entité
+        self.entity_counters: Dict[str, int] = {}
+
         # Statistiques de traitement
         self.processing_stats = {
             "documents_processed": 0,
@@ -1639,6 +1641,8 @@ class DocumentAnonymizer:
             )
             # Conserver le mapping pour utilisation ultérieure
             self.entity_mapping = entity_mapping
+            # Rendre les compteurs accessibles au niveau du document
+            self.entity_counters = self.regex_anonymizer.entity_counters
 
             # Validation de l'anonymisation
             validation_result = self._validate_anonymization(
@@ -1671,6 +1675,7 @@ class DocumentAnonymizer:
                 "anonymized_text": anonymized_text,
                 "anonymized_path": anonymized_path,
                 "entity_mapping": entity_mapping,
+                "entity_counters": self.entity_counters,
                 "metadata": metadata,
                 "mode": mode,
                 "confidence": confidence,
