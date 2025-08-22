@@ -165,6 +165,29 @@ def import_entities_from_json(json_path: str) -> List[Dict]:
         logging.error(f"Error importing entities: {str(e)}")
         return []
 
+def serialize_entity_mapping(mapping: Dict[str, Dict[str, str]], output_path: Optional[str] = None) -> Optional[str]:
+    """Sérialiser un mapping d'entités en JSON.
+
+    Parameters
+    ----------
+    mapping: Dict[str, Dict[str, str]]
+        Mapping des valeurs originales vers leurs remplacements.
+    output_path: Optional[str]
+        Chemin de sauvegarde. Si fourni, le JSON est écrit sur disque et le
+        chemin est retourné. Sinon, la chaîne JSON est retournée.
+    """
+    try:
+        mapping_json = json.dumps(mapping, ensure_ascii=False, indent=2)
+        if output_path:
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(mapping_json)
+            logging.info(f"Entity mapping saved to {output_path}")
+            return output_path
+        return mapping_json
+    except (OSError, TypeError) as e:
+        logging.error(f"Error serializing entity mapping: {str(e)}")
+        return None
+
 def merge_entities(entities1: List[Dict], entities2: List[Dict]) -> List[Dict]:
     """Fusionner deux listes d'entités en évitant les doublons"""
     merged = []

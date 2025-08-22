@@ -45,7 +45,8 @@ from .utils import (
     format_file_size,
     save_upload_file,
     cleanup_temp_files,
-    generate_anonymization_stats
+    generate_anonymization_stats,
+    serialize_entity_mapping
 )
 
 __all__ = [
@@ -67,5 +68,6 @@ __all__ = [
     "format_file_size",
     "save_upload_file",
     "cleanup_temp_files",
-    "generate_anonymization_stats"
+    "generate_anonymization_stats",
+    "serialize_entity_mapping"
 ]
