@@ -77,8 +77,9 @@ class TestRegexAnonymizer(unittest.TestCase):
         """Les tokens sont réutilisés et les compteurs se réinitialisent"""
         text = "Emails: a@example.com and a@example.com"
         entities = [
-            Entity(id="1", type="EMAIL", value="a@example.com", start=8, end=21),
+            # Liste volontairement non triée pour vérifier l'indépendance à l'ordre
             Entity(id="2", type="EMAIL", value="a@example.com", start=26, end=39),
+            Entity(id="1", type="EMAIL", value="a@example.com", start=8, end=21),
         ]
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
         token = mapping["EMAIL"]["a@example.com"]
@@ -92,6 +93,20 @@ class TestRegexAnonymizer(unittest.TestCase):
         anonymized2, mapping2 = self.anonymizer.anonymize_text(text2, entities2)
         token2 = mapping2["EMAIL"]["b@example.com"]
         self.assertEqual(token2, "[EMAIL_1]")
+
+    def test_overlapping_entities(self):
+        """Les entités se chevauchant sont remplacées de manière stable"""
+        text = "John Doe and John"
+        entities = [
+            Entity(id="1", type="NAME", value="John", start=0, end=4),
+            Entity(id="2", type="NAME", value="John Doe", start=0, end=8),
+            Entity(id="3", type="NAME", value="John", start=13, end=17),
+        ]
+        anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
+        token_doe = mapping["NAME"]["John Doe"]
+        token_john = mapping["NAME"]["John"]
+        self.assertNotEqual(token_doe, token_john)
+        self.assertEqual(anonymized, f"{token_doe} and {token_john}")
 
 class TestEntityManager(unittest.TestCase):
     """Tests pour le gestionnaire d'entités"""
