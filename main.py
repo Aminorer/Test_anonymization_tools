@@ -106,6 +106,7 @@ try:
         calculate_text_coverage,
     )
     from src.config import ENTITY_COLORS, SUPPORTED_FORMATS, MAX_FILE_SIZE, ANONYMIZATION_PRESETS
+    from src import perf_dashboard
 except ImportError as e:
     st.error(f"❌ Erreur d'import des modules: {e}")
     st.info("Vérifiez que tous les fichiers sont présents dans le dossier src/")
@@ -641,12 +642,27 @@ def process_document_with_progress(uploaded_file):
             st.session_state.document_text = result["text"]
             st.session_state.processed_file_path = result.get("anonymized_path")
             st.session_state.processing_stats = result.get("metadata", {})
-            
+
             # Ajouter les entités au gestionnaire
             st.session_state.entity_manager = EntityManager()
             for entity in filtered_entities:
                 st.session_state.entity_manager.add_entity(entity)
-            
+
+            # Générer les métriques de performance
+            stats = generate_anonymization_stats(filtered_entities, len(result["text"]))
+            avg_conf = 0
+            if stats.get("confidence_stats"):
+                avg_conf = stats["confidence_stats"].get("average", 0)
+            metrics = {
+                "precision": avg_conf,
+                "recall": stats.get("coverage_percentage", 0) / 100,
+                "processing_time": st.session_state.processing_stats.get("processing_time", 0),
+            }
+            metrics_dir = Path("temp")
+            metrics_dir.mkdir(exist_ok=True)
+            with open(metrics_dir / "metrics.json", "w", encoding="utf-8") as f:
+                json.dump(metrics, f)
+
             return True
         else:
             st.error(f"❌ Erreur lors du traitement: {result.get('error', 'Erreur inconnue')}")
@@ -1543,32 +1559,37 @@ def main():
     try:
         # Initialisation
         init_session_state()
-        
+
         # En-tête
         display_header()
         display_system_status()
-        
-        # Upload de fichier
-        uploaded_file = display_upload_section()
-        
-        if uploaded_file:
-            # Options de traitement
-            display_processing_options()
-            
-            # Bouton de traitement
-            if st.button("🔍 Analyser le Document", type="primary"):
-                success = process_document_with_progress(uploaded_file)
-                
-                if success:
-                    st.balloons()
-                    st.success("✅ Document analysé avec succès!")
-            
-            # Afficher les résultats si disponibles
-            if st.session_state.entities:
-                display_results_advanced()
-                display_entity_manager_advanced()
-                display_export_section_advanced()
-        
+
+        tab_main, tab_perf = st.tabs(["Anonymisation", "Performance"])
+
+        with tab_main:
+            uploaded_file = display_upload_section()
+
+            if uploaded_file:
+                # Options de traitement
+                display_processing_options()
+
+                # Bouton de traitement
+                if st.button("🔍 Analyser le Document", type="primary"):
+                    success = process_document_with_progress(uploaded_file)
+
+                    if success:
+                        st.balloons()
+                        st.success("✅ Document analysé avec succès!")
+
+                # Afficher les résultats si disponibles
+                if st.session_state.entities:
+                    display_results_advanced()
+                    display_entity_manager_advanced()
+                    display_export_section_advanced()
+
+        with tab_perf:
+            perf_dashboard.display_performance_dashboard()
+
         # Nettoyage périodique
         cleanup_temp_files()
         
