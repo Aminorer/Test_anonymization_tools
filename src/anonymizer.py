@@ -1821,100 +1821,77 @@ class DocumentAnonymizer:
                 raise RuntimeError("DOCX export requires python-docx")
 
             try:
-                doc = Document()
+                doc = Document(original_path)
 
-                header = doc.sections[0].header
-                header_para = header.paragraphs[0]
-                header_para.text = (
-                    watermark
-                    if watermark
-                    else "DOCUMENT ANONYMISÉ - CONFORME RGPD"
-                )
+                # Construire la table de remplacement
+                replacement_map: Dict[str, str] = {}
+                if entities:
+                    for ent in entities:
+                        if getattr(ent, "replacement", None):
+                            replacement_map[ent.value] = ent.replacement
 
-                doc.add_heading("DOCUMENT ANONYMISÉ", 0)
-                doc.add_heading("INFORMATIONS D'ANONYMISATION", 1)
+                if not replacement_map and getattr(
+                    self.regex_anonymizer, "entity_mapping", None
+                ):
+                    for type_map in self.regex_anonymizer.entity_mapping.values():
+                        replacement_map.update(type_map)
 
-                info_para = doc.add_paragraph()
-                info_para.add_run("Document original: ").bold = True
-                info_para.add_run(f"{Path(original_path).name}\n")
-                info_para.add_run("Date d'anonymisation: ").bold = True
-                info_para.add_run(
-                    f"{datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}\n"
-                )
-                for key, value in metadata.items():
-                    info_para.add_run(f"{key}: ").bold = True
-                    info_para.add_run(f"{value}\n")
-                info_para.add_run("Entités anonymisées: ").bold = True
-                info_para.add_run(f"{len(entities)}\n")
+                # Fonction de remplacement dans un paragraphe
+                def _replace_in_paragraph(paragraph):
+                    for run in paragraph.runs:
+                        text = run.text
+                        for original, token in replacement_map.items():
+                            if original in text:
+                                text = text.replace(original, token)
+                        run.text = text
+
+                # Corps du document
+                for paragraph in doc.paragraphs:
+                    _replace_in_paragraph(paragraph)
+
+                for table in doc.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                _replace_in_paragraph(paragraph)
+
+                # En-têtes et pieds de page
+                for section in doc.sections:
+                    if watermark:
+                        if section.header.paragraphs:
+                            section.header.paragraphs[0].text = str(watermark)
+                        else:
+                            section.header.add_paragraph(str(watermark))
+
+                    for paragraph in section.header.paragraphs:
+                        _replace_in_paragraph(paragraph)
+                    for table in section.header.tables:
+                        for row in table.rows:
+                            for cell in row.cells:
+                                for paragraph in cell.paragraphs:
+                                    _replace_in_paragraph(paragraph)
+
+                    for paragraph in section.footer.paragraphs:
+                        _replace_in_paragraph(paragraph)
+                    for table in section.footer.tables:
+                        for row in table.rows:
+                            for cell in row.cells:
+                                for paragraph in cell.paragraphs:
+                                    _replace_in_paragraph(paragraph)
+
+                # Ajout optionnel de métadonnées et statistiques
+                if include_report and metadata:
+                    doc.add_page_break()
+                    doc.add_paragraph("=== METADATA ===")
+                    for key, value in metadata.items():
+                        doc.add_paragraph(f"{key}: {value}")
 
                 if include_stats and stats:
-                    doc.add_heading("RÉCAPITULATIF DES ENTITÉS", 2)
-                    entity_types = stats.get("entity_types", {})
-                    table = doc.add_table(
-                        rows=len(entity_types) + 1, cols=3
-                    )
-                    table.style = "Table Grid"
-                    header_cells = table.rows[0].cells
-                    header_cells[0].text = "Type d'entité"
-                    header_cells[1].text = "Nombre"
-                    header_cells[2].text = "Pourcentage"
-
-                    for i, (entity_type, count) in enumerate(
-                        sorted(entity_types.items()), 1
-                    ):
-                        row = table.rows[i].cells
-                        row[0].text = entity_type
-                        row[1].text = str(count)
-                        percentage = (
-                            (count / len(entities) * 100) if entities else 0
-                        )
-                        row[2].text = f"{percentage:.1f}%"
-
-                doc.add_page_break()
-                doc.add_heading("CONTENU ANONYMISÉ", 1)
-                for paragraph in anonymized_text.split("\n"):
-                    if paragraph.strip():
-                        doc.add_paragraph(paragraph.strip())
-
-                if include_report:
-                    doc.add_page_break()
-                    doc.add_heading("RAPPORT D'AUDIT RGPD", 1)
-                    audit_para = doc.add_paragraph()
-                    audit_para.add_run("Conformité RGPD:\n").bold = True
-                    audit_para.add_run(
-                        "• Article 4(5) - Pseudonymisation: Appliquée\n"
-                    )
-                    audit_para.add_run(
-                        "• Article 25 - Protection dès la conception: Respectée\n"
-                    )
-                    audit_para.add_run(
-                        "• Article 32 - Sécurité du traitement: Mise en œuvre\n"
-                    )
-                    audit_para.add_run(
-                        "• Recital 26 - Anonymisation: Conforme\n\n"
-                    )
-                    audit_para.add_run("Recommandations:\n").bold = True
-                    audit_para.add_run(
-                        "• Vérifiez manuellement les entités détectées\n"
-                    )
-                    audit_para.add_run(
-                        "• Conservez ce rapport pour traçabilité\n"
-                    )
-                    audit_para.add_run(
-                        "• Relecture recommandée avant diffusion\n"
-                    )
-
-                footer = doc.sections[0].footer
-                footer_para = footer.paragraphs[0]
-                document_hash = hashlib.md5(
-                    anonymized_text.encode("utf-8")
-                ).hexdigest()[:16]
-                document_id = str(uuid.uuid4())[:8].upper()
-                footer_para.text = (
-                    f"Anonymiseur v2.0 - ID: {document_id} - "
-                    f"Hash: {document_hash} - "
-                    f"Généré: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
-                )
+                    if not include_report:
+                        doc.add_page_break()
+                    doc.add_paragraph("=== STATISTICS ===")
+                    for key, value in stats.items():
+                        doc.add_paragraph(f"{key}: {value}")
 
                 output_path = os.path.join(
                     self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.docx"
