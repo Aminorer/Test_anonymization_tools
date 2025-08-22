@@ -17,6 +17,13 @@ Cette application Streamlit permet d'anonymiser automatiquement les documents ju
 - 📤 **Export avancé** : DOCX et PDF avec options de filigrane, rapport d'audit et statistiques (désactivées par défaut ; PDF nécessite `fpdf`)
 - 🛡️ **Conformité RGPD** : Standards CNIL respectés
 
+## 📚 Documentation
+
+- [Architecture](docs/architecture.md)
+- [Spécification OpenAPI](docs/openapi.yaml)
+- [Dockerfile](Dockerfile)
+- [Script d'installation](scripts/setup.sh)
+
 ## 🚀 **Installation et Démarrage Rapide**
 
 ### **1. Prérequis**
