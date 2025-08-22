@@ -43,7 +43,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
-from .utils import generate_anonymization_stats
+from .utils import generate_anonymization_stats, serialize_entity_mapping
 
 # === IMPORTS DOCUMENT ===
 try:
@@ -1558,6 +1558,8 @@ class DocumentAnonymizer:
         self.document_processor = DocumentProcessor()
         self.temp_dir = tempfile.mkdtemp()
         self.prefer_french = prefer_french
+        # Mapping des entités pour assurer la cohérence des remplacements
+        self.entity_mapping: Dict[str, Dict[str, str]] = {}
         
         # Statistiques de traitement
         self.processing_stats = {
@@ -1635,6 +1637,8 @@ class DocumentAnonymizer:
             anonymized_text, entity_mapping = self.regex_anonymizer.anonymize_text(
                 text, entities
             )
+            # Conserver le mapping pour utilisation ultérieure
+            self.entity_mapping = entity_mapping
 
             # Validation de l'anonymisation
             validation_result = self._validate_anonymization(
@@ -1778,9 +1782,16 @@ class DocumentAnonymizer:
             entity_objects = detected
             entities = [asdict(e) for e in detected]
 
-        anonymized_text, _ = self.regex_anonymizer.anonymize_text(
+        anonymized_text, mapping = self.regex_anonymizer.anonymize_text(
             text, entity_objects
         )
+        # Conserver le mapping pour export ultérieur
+        self.entity_mapping = mapping
+
+        if audit:
+            serialized = serialize_entity_mapping(self.entity_mapping)
+            if serialized is not None:
+                metadata["entity_mapping"] = serialized
 
         stats = generate_anonymization_stats(entities, len(text)) if audit else None
 
@@ -1826,6 +1837,7 @@ class DocumentAnonymizer:
 
         export_format = (export_format or "txt").lower()
         entities = entities or []
+        metadata = metadata or {}
 
         stats: Optional[Dict[str, Any]] = None
         if audit:
@@ -1837,6 +1849,12 @@ class DocumentAnonymizer:
             except Exception:
                 stats = None
 
+            # Ajouter le mapping sérialisé pour le rapport d'audit
+            serialized = serialize_entity_mapping(self.entity_mapping)
+            if serialized is not None:
+                metadata = dict(metadata)
+                metadata["entity_mapping"] = serialized
+
         if export_format == "docx":
             if not DOCX_SUPPORT:
                 raise RuntimeError("DOCX export requires python-docx")
@@ -1844,18 +1862,15 @@ class DocumentAnonymizer:
             try:
                 doc = Document(original_path)
 
-                # Construire la table de remplacement
+                # Construire la table de remplacement à partir du mapping existant
                 replacement_map: Dict[str, str] = {}
-                if entities:
+                if self.entity_mapping:
+                    for type_map in self.entity_mapping.values():
+                        replacement_map.update(type_map)
+                elif entities:
                     for ent in entities:
                         if getattr(ent, "replacement", None):
                             replacement_map[ent.value] = ent.replacement
-
-                if not replacement_map and getattr(
-                    self.regex_anonymizer, "entity_mapping", None
-                ):
-                    for type_map in self.regex_anonymizer.entity_mapping.values():
-                        replacement_map.update(type_map)
 
                 # Fonction de remplacement dans un paragraphe
                 def _replace_in_paragraph(paragraph):

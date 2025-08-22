@@ -14,7 +14,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.anonymizer import RegexAnonymizer, DocumentAnonymizer, Entity
 from src.entity_manager import EntityManager
-from src.utils import format_file_size, validate_entities, generate_anonymization_stats
+from src.utils import (
+    format_file_size,
+    validate_entities,
+    generate_anonymization_stats,
+    serialize_entity_mapping,
+)
 
 class TestRegexAnonymizer(unittest.TestCase):
     """Tests pour l'anonymiseur Regex"""
@@ -300,6 +305,23 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(conf_stats["low_confidence_count"], 1)
         self.assertAlmostEqual(conf_stats["average"], (0.9 + 0.6 + 0.4) / 3, places=5)
 
+    def test_serialize_entity_mapping(self):
+        """Vérifie la sérialisation du mapping d'entités"""
+        mapping = {"EMAIL": {"a@example.com": "[EMAIL_1]"}}
+        json_str = serialize_entity_mapping(mapping)
+        self.assertIn("[EMAIL_1]", json_str)
+
+        tmp = tempfile.NamedTemporaryFile(delete=False)
+        tmp.close()
+        try:
+            path = serialize_entity_mapping(mapping, tmp.name)
+            self.assertEqual(path, tmp.name)
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.assertIn("a@example.com", content)
+        finally:
+            os.unlink(tmp.name)
+
 class TestDocumentAnonymizer(unittest.TestCase):
     """Tests pour l'anonymiseur de documents"""
     
@@ -378,6 +400,28 @@ class TestDocumentAnonymizer(unittest.TestCase):
 
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0].type, "EMAIL")
+
+    def test_process_document_returns_mapping(self):
+        """Vérifie que le mapping est conservé et utilisé"""
+        text = "Contact: test@example.com"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        try:
+            result = self.anonymizer.process_document(temp_path, mode="regex", audit=True)
+            mapping = result.get("entity_mapping", {})
+            self.assertEqual(mapping, self.anonymizer.entity_mapping)
+            token = mapping["EMAIL"]["test@example.com"]
+            self.assertIn(token, result["anonymized_text"])
+
+            with open(result["anonymized_path"], "r", encoding="utf-8") as rf:
+                content = rf.read()
+            self.assertIn(token, content)
+        finally:
+            os.unlink(temp_path)
+            if "result" in locals() and os.path.exists(result["anonymized_path"]):
+                os.unlink(result["anonymized_path"])
 
     def test_export_anonymized_document_with_entities(self):
         """Vérifie l'export avec entités fournies et options"""
