@@ -96,6 +96,32 @@ class TestRegexAnonymizer(unittest.TestCase):
         self.assertEqual(person_map["M. Jean Dûpont"], person_map["Dupont"])
         self.assertEqual(person_map["Mme de La Tour"], person_map["de La Tour"])
 
+    def test_token_reuse_with_inclusion(self):
+        """Un jeton doit être réutilisé pour des valeurs incluses l'une dans l'autre."""
+        anonymizer = RegexAnonymizer(score_cutoff=0.7)
+        text = "La société Dupont SARL collabore avec Dupont."
+        entities = [
+            Entity(id="1", type="ORG", value="Dupont SARL", start=0, end=0),
+            Entity(id="2", type="ORG", value="Dupont", start=0, end=0),
+        ]
+
+        _, mapping = anonymizer.anonymize_text(text, entities)
+        org_map = mapping.get("ORG", {})
+        self.assertEqual(org_map["Dupont SARL"], org_map["Dupont"])
+
+    def test_person_token_reuse_with_variants(self):
+        """Les variantes orthographiques proches partagent le même jeton."""
+        anonymizer = RegexAnonymizer(score_cutoff=0.9)
+        text = "Jean Dupont parle à J. Dupon."
+        entities = [
+            Entity(id="1", type="PERSON", value="Jean Dupont", start=0, end=0),
+            Entity(id="2", type="PERSON", value="J. Dupon", start=0, end=0),
+        ]
+
+        _, mapping = anonymizer.anonymize_text(text, entities)
+        person_map = mapping.get("PERSON", {})
+        self.assertEqual(person_map["Jean Dupont"], person_map["J. Dupon"])
+
     def test_ssn_detection_valid_invalid(self):
         """Vérifie la détection des NIR valides et le rejet des invalides"""
         valid_text = (

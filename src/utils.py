@@ -78,6 +78,46 @@ def normalize_name(value: str) -> str:
 
     return " ".join(last_parts)
 
+
+def similarity(a: str, b: str, *, score_cutoff: float, algorithm: str = "rapidfuzz") -> bool:
+    """Return ``True`` if the similarity between ``a`` and ``b`` is above ``score_cutoff``.
+
+    Parameters
+    ----------
+    a, b: str
+        Strings to compare.
+    score_cutoff: float
+        Minimum similarity required to return ``True``. The score is expressed
+        between 0 and 1.
+    algorithm: str, optional
+        Either ``"rapidfuzz"`` or ``"levenshtein"`` to select the underlying
+        implementation. ``"rapidfuzz"`` is used by default.
+
+    Returns
+    -------
+    bool
+        ``True`` if the computed similarity is greater than or equal to
+        ``score_cutoff``.
+    """
+
+    if not a or not b:
+        return False
+
+    try:
+        if algorithm == "rapidfuzz":
+            from rapidfuzz import fuzz
+
+            score = fuzz.ratio(a, b) / 100.0
+        else:
+            from Levenshtein import ratio  # type: ignore
+
+            score = ratio(a, b)
+    except ImportError:
+        # If the requested library is missing, the comparison cannot be made
+        return False
+
+    return score >= score_cutoff
+
 def format_file_size(size_bytes: int) -> str:
     """Formater la taille d'un fichier en unités lisibles"""
     if size_bytes == 0:
