@@ -176,6 +176,30 @@ anonymizer = RegexAnonymizer(
 Par défaut, les titres supprimés sont `mr`, `mme`, `dr`, `me`, `maître` et le
 seuil de similarité est `0.85`.
 
+### **Algorithme de similarité**
+
+L'application utilise `rapidfuzz` par défaut pour le calcul de la similarité des noms. Ce paquet est optionnel mais requis pour l'algorithme par défaut :
+
+```bash
+pip install rapidfuzz
+```
+
+Si `rapidfuzz` n'est pas disponible, installez `python-Levenshtein` et sélectionnez l'algorithme `"levenshtein"` dans les fonctions concernées :
+
+```bash
+pip install python-Levenshtein
+```
+
+```python
+from src.anonymizer import RegexAnonymizer
+
+anonymizer = RegexAnonymizer(algorithm="levenshtein")
+# ou utilitaire
+# similarity("Alice", "Alicia", algorithm="levenshtein")
+```
+
+Dans ce mode, le calcul de similarité repose sur l'algorithme Levenshtein.
+
 ### **Personnalisation des Entités**
 Modifiez `src/config.py` pour :
 - Ajouter des patterns regex personnalisés
