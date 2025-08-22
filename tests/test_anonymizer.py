@@ -78,6 +78,24 @@ class TestRegexAnonymizer(unittest.TestCase):
         entities_invalid = self.anonymizer.detect_entities(text_invalid)
         self.assertFalse(any(e.type == "IBAN" for e in entities_invalid))
 
+    def test_person_token_reuse_with_normalization(self):
+        """Les variantes d'un même nom doivent recevoir le même jeton."""
+        text = (
+            "M. Jean Dûpont a parlé à Dupont. "
+            "Mme de La Tour a répondu à de La Tour."
+        )
+        entities = [
+            Entity(id="1", type="PERSON", value="M. Jean Dûpont", start=0, end=0),
+            Entity(id="2", type="PERSON", value="Dupont", start=0, end=0),
+            Entity(id="3", type="PERSON", value="Mme de La Tour", start=0, end=0),
+            Entity(id="4", type="PERSON", value="de La Tour", start=0, end=0),
+        ]
+
+        anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
+        person_map = mapping.get("PERSON", {})
+        self.assertEqual(person_map["M. Jean Dûpont"], person_map["Dupont"])
+        self.assertEqual(person_map["Mme de La Tour"], person_map["de La Tour"])
+
     def test_ssn_detection_valid_invalid(self):
         """Vérifie la détection des NIR valides et le rejet des invalides"""
         valid_text = (
