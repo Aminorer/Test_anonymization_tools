@@ -141,21 +141,19 @@ def test_installation():
     
     total_modules = len(modules_status)
     working_modules = sum(modules_status.values())
-    
+
     print(f"Modules fonctionnels: {working_modules}/{total_modules}")
-    
     if working_modules >= total_modules * 0.8:
         print("STATUS: INSTALLATION REUSSIE!")
         print("L'application est prete a etre utilisee.")
-        
+
         if not modules_status.get("torch", False):
             print("NOTE: PyTorch manquant - l'app fonctionnera en mode regex uniquement")
-        
-        return True
     else:
-        print("STATUS: INSTALLATION INCOMPLETE") 
+        print("STATUS: INSTALLATION INCOMPLETE")
         print("Certains modules essentiels sont manquants.")
-        return False
+
+    assert working_modules >= total_modules * 0.8
 
 def show_launch_instructions():
     """Afficher les instructions de lancement"""
@@ -175,9 +173,13 @@ def show_launch_instructions():
     print("   python run.py")
 
 if __name__ == "__main__":
-    success = test_installation()
+    try:
+        test_installation()
+        success = True
+    except AssertionError:
+        success = False
     show_launch_instructions()
-    
+
     if success:
         print("\nTout est pret! Lancez l'application quand vous voulez.")
     else:
