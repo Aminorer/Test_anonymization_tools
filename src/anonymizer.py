@@ -49,6 +49,8 @@ from .utils import (
     serialize_entity_mapping,
     compute_confidence,
     normalize_name,
+    get_name_normalization_titles,
+    get_similarity_threshold,
 )
 
 # === IMPORTS DOCUMENT ===
@@ -313,7 +315,8 @@ class RegexAnonymizer:
         use_french_patterns: bool = True,
         *,
         algorithm: str = "rapidfuzz",
-        score_cutoff: float = 0.9,
+        score_cutoff: Optional[float] = None,
+        titles: Optional[List[str]] = None,
     ):
         self.patterns = FRENCH_ENTITY_PATTERNS if use_french_patterns else ENTITY_PATTERNS
         self.replacements = DEFAULT_REPLACEMENTS
@@ -326,7 +329,11 @@ class RegexAnonymizer:
         self.false_positive_patterns = self._load_false_positive_patterns()
         # Paramètres de similarité
         self.algorithm = algorithm
-        self.score_cutoff = score_cutoff
+        self.score_cutoff = (
+            score_cutoff if score_cutoff is not None else get_similarity_threshold()
+        )
+        # Titres utilisés pour la normalisation des noms
+        self.titles = titles if titles is not None else get_name_normalization_titles()
         logging.info(
             f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns"
         )
@@ -470,12 +477,12 @@ class RegexAnonymizer:
             norm_map = normalized_cache.setdefault(entity.type, {})
 
             norm_value = (
-                normalize_name(entity.value)
+                normalize_name(entity.value, titles=self.titles)
                 if entity.type == "PERSON"
                 else entity.value
             )
             canonical = (
-                normalize_name(entity.value)
+                normalize_name(entity.value, titles=self.titles)
                 if entity.type == "PERSON"
                 else entity.value
             )

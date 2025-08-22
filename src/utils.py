@@ -11,7 +11,44 @@ from datetime import datetime, timedelta
 import hashlib
 import json
 
-TITLE_REGEX = re.compile(r"^(?:m(?:r|me|lle)?|mr|mme|mlle|dr|prof|me|ma(?:itre|ître))\.?\s+", re.IGNORECASE)
+from .config import NAME_NORMALIZATION
+
+
+def get_name_normalization_titles() -> List[str]:
+    """Return the list of titles used for name normalization.
+
+    Environment variable ``ANONYMIZER_TITLES`` takes precedence over the
+    configuration. Titles are comma-separated and case-insensitive.
+    """
+
+    env_titles = os.getenv("ANONYMIZER_TITLES")
+    if env_titles:
+        return [t.strip().lower() for t in env_titles.split(",") if t.strip()]
+    return [t.lower() for t in NAME_NORMALIZATION.get("titles", [])]
+
+
+def _compile_title_regex(titles: List[str]) -> re.Pattern:
+    """Compile a regex pattern to match civil titles.
+
+    Both accented and unaccented forms of titles are supported.
+    """
+
+    variants: List[str] = []
+    for title in titles:
+        title = title.strip().rstrip(".")
+        if not title:
+            continue
+        variants.append(re.escape(title))
+        normalized = unicodedata.normalize("NFKD", title)
+        ascii_variant = "".join(c for c in normalized if not unicodedata.combining(c))
+        if ascii_variant != title:
+            variants.append(re.escape(ascii_variant))
+
+    if not variants:
+        return re.compile(r"^\s*", re.IGNORECASE)
+
+    pattern = r"^(?:" + "|".join(sorted(set(variants))) + r")\.?\s+"
+    return re.compile(pattern, re.IGNORECASE)
 PARTICLES = {
     "de",
     "du",
@@ -31,7 +68,7 @@ PARTICLES = {
     "ter",
 }
 
-def normalize_name(value: str) -> str:
+def normalize_name(value: str, *, titles: Optional[List[str]] = None) -> str:
     """Normalize a personal name for consistent anonymization.
 
     The function removes titles, strips first names while preserving particles,
@@ -41,6 +78,9 @@ def normalize_name(value: str) -> str:
     ----------
     value: str
         Original name value.
+    titles: list of str, optional
+        List of titles to strip. If not provided, values from the configuration
+        or environment are used.
 
     Returns
     -------
@@ -50,8 +90,11 @@ def normalize_name(value: str) -> str:
     if not value:
         return ""
 
+    titles_list = titles if titles is not None else get_name_normalization_titles()
+    title_regex = _compile_title_regex(titles_list)
+
     # Remove civil titles
-    name = TITLE_REGEX.sub("", value).strip()
+    name = title_regex.sub("", value).strip()
     if not name:
         return ""
 
@@ -79,16 +122,35 @@ def normalize_name(value: str) -> str:
     return " ".join(last_parts)
 
 
-def similarity(a: str, b: str, *, score_cutoff: float, algorithm: str = "rapidfuzz") -> bool:
+def get_similarity_threshold() -> float:
+    """Return the similarity threshold from env or configuration."""
+
+    env_value = os.getenv("ANONYMIZER_SIMILARITY_THRESHOLD")
+    if env_value:
+        try:
+            return float(env_value)
+        except ValueError:
+            pass
+    return float(NAME_NORMALIZATION.get("similarity_threshold", 0.85))
+
+
+def similarity(
+    a: str,
+    b: str,
+    *,
+    score_cutoff: Optional[float] = None,
+    algorithm: str = "rapidfuzz",
+) -> bool:
     """Return ``True`` if the similarity between ``a`` and ``b`` is above ``score_cutoff``.
 
     Parameters
     ----------
     a, b: str
         Strings to compare.
-    score_cutoff: float
+    score_cutoff: float, optional
         Minimum similarity required to return ``True``. The score is expressed
-        between 0 and 1.
+        between 0 and 1. If omitted, the value defined in configuration or
+        environment is used.
     algorithm: str, optional
         Either ``"rapidfuzz"`` or ``"levenshtein"`` to select the underlying
         implementation. ``"rapidfuzz"`` is used by default.
@@ -103,6 +165,8 @@ def similarity(a: str, b: str, *, score_cutoff: float, algorithm: str = "rapidfu
     if not a or not b:
         return False
 
+    cutoff = score_cutoff if score_cutoff is not None else get_similarity_threshold()
+
     try:
         if algorithm == "rapidfuzz":
             from rapidfuzz import fuzz
@@ -116,7 +180,7 @@ def similarity(a: str, b: str, *, score_cutoff: float, algorithm: str = "rapidfu
         # If the requested library is missing, the comparison cannot be made
         return False
 
-    return score >= score_cutoff
+    return score >= cutoff
 
 def format_file_size(size_bytes: int) -> str:
     """Formater la taille d'un fichier en unités lisibles"""
