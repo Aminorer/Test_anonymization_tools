@@ -118,6 +118,25 @@ anonymizer-streamlit/
 - **Format** : DOCX préservant la structure originale
 - **Téléchargement** : Direct depuis l'interface
 
+### **6. Rapport d'audit optionnel**
+Les méthodes `process_document` et `export_anonymized_document` acceptent un paramètre `audit`.
+Lorsqu'il est activé (`audit=True`), un rapport détaillant les métadonnées et les statistiques
+d'anonymisation est ajouté ou généré séparément.
+
+```python
+from src.anonymizer import DocumentAnonymizer
+
+anonymizer = DocumentAnonymizer()
+
+# Traitement avec rapport d'audit
+result = anonymizer.process_document("contrat.pdf", audit=True)
+
+# Export en incluant le rapport
+export_path = anonymizer.export_anonymized_document(
+    "contrat.txt", options={"format": "txt"}, audit=True
+)
+```
+
 ## ⚙️ **Configuration Avancée**
 
 ### **Variables d'Environnement**

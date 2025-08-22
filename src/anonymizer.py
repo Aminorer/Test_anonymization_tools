@@ -1578,8 +1578,14 @@ class DocumentAnonymizer:
             original_text, anonymized_text, entities
         )
 
-    def process_document(self, file_path: str, mode: str = "ai", confidence: float = 0.7) -> Dict[str, Any]:
-        """Traitement principal avec gestion optimisée des performances"""
+    def process_document(
+        self,
+        file_path: str,
+        mode: str = "ai",
+        confidence: float = 0.7,
+        audit: bool = False,
+    ) -> Dict[str, Any]:
+        """Traitement principal avec option de rapport d'audit"""
         import time
         start_time = time.time()
         
@@ -1626,25 +1632,34 @@ class DocumentAnonymizer:
             entities = self._post_process_entities(entities, text)
             
             # Anonymisation
-            anonymized_text, entity_mapping = self.regex_anonymizer.anonymize_text(text, entities)
-            
-            # Validation de l'anonymisation
-            validation_result = self._validate_anonymization(text, anonymized_text, entities)
-            
-            # Création du document anonymisé
-            anonymized_path = self._create_anonymized_document(
-                file_path, anonymized_text, metadata, entities
+            anonymized_text, entity_mapping = self.regex_anonymizer.anonymize_text(
+                text, entities
             )
-            
+
+            # Validation de l'anonymisation
+            validation_result = self._validate_anonymization(
+                text, anonymized_text, entities
+            )
+
             # Calcul des métriques
             processing_time = time.time() - start_time
+            stats = self._generate_processing_stats(entities, text, processing_time)
+            metadata.update(stats)
+
+            # Mise à jour des statistiques globales
             self.processing_stats["documents_processed"] += 1
             self.processing_stats["entities_detected"] += len(entities)
             self.processing_stats["processing_time"] += processing_time
 
-            # Génération des statistiques
-            stats = self._generate_processing_stats(entities, text, processing_time)
-            
+            # Création du document anonymisé
+            anonymized_path = self._create_anonymized_document(
+                file_path,
+                anonymized_text,
+                metadata,
+                entities,
+                audit=audit,
+            )
+
             return {
                 "status": "success",
                 "entities": [asdict(entity) for entity in entities],
@@ -1652,11 +1667,11 @@ class DocumentAnonymizer:
                 "anonymized_text": anonymized_text,
                 "anonymized_path": anonymized_path,
                 "entity_mapping": entity_mapping,
-                "metadata": {**metadata, **stats},
+                "metadata": metadata,
                 "mode": mode,
                 "confidence": confidence,
                 "validation": validation_result,
-                "processing_time": processing_time
+                "processing_time": processing_time,
             }
         
         except (OSError, ValueError, RuntimeError) as e:
@@ -1726,12 +1741,13 @@ class DocumentAnonymizer:
         original_path: str,
         entities: Optional[List[Dict]] = None,
         options: Optional[Dict[str, Any]] = None,
+        audit: bool = False,
     ) -> str:
         """Exporter un document anonymisé dans le format souhaité."""
         options = options or {}
         output_format = options.get("format", "txt").lower()
 
-        text, _ = self.document_processor.process_file(original_path)
+        text, metadata = self.document_processor.process_file(original_path)
 
         entity_objects: List[Entity] = []
         if entities:
@@ -1762,13 +1778,21 @@ class DocumentAnonymizer:
             entity_objects = detected
             entities = [asdict(e) for e in detected]
 
-        anonymized_text, _ = self.regex_anonymizer.anonymize_text(text, entity_objects)
+        anonymized_text, _ = self.regex_anonymizer.anonymize_text(
+            text, entity_objects
+        )
 
-        stats = None
-        if options.get("include_stats"):
-            stats = generate_anonymization_stats(entities, len(text))
+        stats = generate_anonymization_stats(entities, len(text)) if audit else None
 
-        return self._write_export(anonymized_text, output_format, options, stats, entities)
+        return self._write_export(
+            anonymized_text,
+            output_format,
+            options,
+            stats,
+            entities,
+            metadata,
+            audit=audit,
+        )
 
     def _create_anonymized_document(
         self,
@@ -1778,8 +1802,7 @@ class DocumentAnonymizer:
         entities: Optional[List[Entity]] = None,
         export_format: str = "txt",
         watermark: Optional[str] = None,
-        include_report: bool = False,
-        include_stats: bool = False,
+        audit: bool = False,
     ) -> str:
         """Créer un document anonymisé dans différents formats.
 
@@ -1797,17 +1820,15 @@ class DocumentAnonymizer:
             Format d'export (txt, docx, pdf).
         watermark: Optional[str]
             Filigrane à ajouter au document.
-        include_report: bool
-            Inclure ou non un rapport d'audit/métadonnées.
-        include_stats: bool
-            Inclure ou non les statistiques d'anonymisation.
+        audit: bool
+            Inclure un rapport d'audit avec métadonnées et statistiques.
         """
 
         export_format = (export_format or "txt").lower()
         entities = entities or []
 
         stats: Optional[Dict[str, Any]] = None
-        if include_stats:
+        if audit:
             try:
                 stats = generate_anonymization_stats(
                     [asdict(e) if isinstance(e, Entity) else e for e in entities],
@@ -1880,18 +1901,16 @@ class DocumentAnonymizer:
                                     _replace_in_paragraph(paragraph)
 
                 # Ajout optionnel de métadonnées et statistiques
-                if include_report and metadata:
+                if audit and metadata:
                     doc.add_page_break()
-                    doc.add_paragraph("=== METADATA ===")
+                    doc.add_paragraph("=== AUDIT REPORT ===")
                     for key, value in metadata.items():
                         doc.add_paragraph(f"{key}: {value}")
-
-                if include_stats and stats:
-                    if not include_report:
+                    if stats:
                         doc.add_page_break()
-                    doc.add_paragraph("=== STATISTICS ===")
-                    for key, value in stats.items():
-                        doc.add_paragraph(f"{key}: {value}")
+                        doc.add_paragraph("=== STATISTICS ===")
+                        for key, value in stats.items():
+                            doc.add_paragraph(f"{key}: {value}")
 
                 output_path = os.path.join(
                     self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.docx"
@@ -1913,14 +1932,14 @@ class DocumentAnonymizer:
                 if watermark:
                     f.write(f"{watermark}\n\n")
                 f.write(anonymized_text)
-                if include_report and metadata:
-                    f.write("\n\n=== METADATA ===\n")
+                if audit and metadata:
+                    f.write("\n\n=== AUDIT REPORT ===\n")
                     for key, value in metadata.items():
                         f.write(f"{key}: {value}\n")
-                if include_stats and stats:
-                    f.write("\n\n=== STATISTICS ===\n")
-                    for key, value in stats.items():
-                        f.write(f"{key}: {value}\n")
+                    if stats:
+                        f.write("\n\n=== STATISTICS ===\n")
+                        for key, value in stats.items():
+                            f.write(f"{key}: {value}\n")
             return output_path
 
         elif export_format == "pdf":
@@ -1942,20 +1961,20 @@ class DocumentAnonymizer:
                 pdf.set_text_color(0, 0, 0)
             for line in anonymized_text.splitlines():
                 pdf.multi_cell(0, 10, line)
-            if include_report and metadata:
+            if audit and metadata:
                 pdf.add_page()
                 pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 10, "METADATA", ln=True)
+                pdf.cell(0, 10, "AUDIT REPORT", ln=True)
                 pdf.set_font("Arial", size=12)
                 for key, value in metadata.items():
                     pdf.multi_cell(0, 10, f"{key}: {value}")
-            if include_stats and stats:
-                pdf.add_page()
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 10, "STATISTICS", ln=True)
-                pdf.set_font("Arial", size=12)
-                for key, value in stats.items():
-                    pdf.multi_cell(0, 10, f"{key}: {value}")
+                if stats:
+                    pdf.add_page()
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, "STATISTICS", ln=True)
+                    pdf.set_font("Arial", size=12)
+                    for key, value in stats.items():
+                        pdf.multi_cell(0, 10, f"{key}: {value}")
             pdf.output(output_path)
             return output_path
 
@@ -1969,6 +1988,8 @@ class DocumentAnonymizer:
         options: Dict[str, Any],
         stats: Optional[Dict[str, Any]] = None,
         entities: Optional[List[Dict]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        audit: bool = False,
     ) -> str:
         """Écrire le texte anonymisé dans le format choisi."""
 
@@ -1976,22 +1997,21 @@ class DocumentAnonymizer:
         output_path = os.path.join(self.temp_dir, filename)
 
         watermark = options.get("watermark")
-        include_audit = options.get("audit")
-        include_stats = options.get("include_stats")
 
         if output_format == "txt":
             with open(output_path, "w", encoding="utf-8") as f:
                 if watermark:
                     f.write(f"{watermark}\n\n")
                 f.write(anonymized_text)
-                if include_audit and entities:
-                    f.write("\n\n=== AUDIT REPORT ===\n")
-                    for ent in entities:
-                        f.write(f"{ent.get('type')}: {ent.get('value')}\n")
-                if include_stats and stats:
-                    f.write("\n\n=== STATISTICS ===\n")
-                    for key, value in stats.items():
-                        f.write(f"{key}: {value}\n")
+                if audit:
+                    if metadata:
+                        f.write("\n\n=== AUDIT REPORT ===\n")
+                        for key, value in metadata.items():
+                            f.write(f"{key}: {value}\n")
+                    if stats:
+                        f.write("\n\n=== STATISTICS ===\n")
+                        for key, value in stats.items():
+                            f.write(f"{key}: {value}\n")
             return output_path
 
         elif output_format == "docx":
@@ -2001,14 +2021,15 @@ class DocumentAnonymizer:
             if watermark:
                 doc.add_paragraph(str(watermark))
             doc.add_paragraph(anonymized_text)
-            if include_audit and entities:
-                doc.add_paragraph("=== AUDIT REPORT ===")
-                for ent in entities:
-                    doc.add_paragraph(f"{ent.get('type')}: {ent.get('value')}")
-            if include_stats and stats:
-                doc.add_paragraph("=== STATISTICS ===")
-                for key, value in stats.items():
-                    doc.add_paragraph(f"{key}: {value}")
+            if audit:
+                if metadata:
+                    doc.add_paragraph("=== AUDIT REPORT ===")
+                    for key, value in metadata.items():
+                        doc.add_paragraph(f"{key}: {value}")
+                if stats:
+                    doc.add_paragraph("=== STATISTICS ===")
+                    for key, value in stats.items():
+                        doc.add_paragraph(f"{key}: {value}")
             doc.save(output_path)
             return output_path
 
@@ -2028,20 +2049,21 @@ class DocumentAnonymizer:
                 pdf.set_text_color(0, 0, 0)
             for line in anonymized_text.splitlines():
                 pdf.multi_cell(0, 10, line)
-            if include_audit and entities:
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 12)
-                pdf.cell(0, 10, "AUDIT REPORT", ln=True)
-                pdf.set_font("Arial", size=12)
-                for ent in entities:
-                    pdf.multi_cell(0, 10, f"{ent.get('type')}: {ent.get('value')}")
-            if include_stats and stats:
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 12)
-                pdf.cell(0, 10, "STATISTICS", ln=True)
-                pdf.set_font("Arial", size=12)
-                for key, value in stats.items():
-                    pdf.multi_cell(0, 10, f"{key}: {value}")
+            if audit:
+                if metadata:
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 12)
+                    pdf.cell(0, 10, "AUDIT REPORT", ln=True)
+                    pdf.set_font("Arial", size=12)
+                    for key, value in metadata.items():
+                        pdf.multi_cell(0, 10, f"{key}: {value}")
+                if stats:
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 12)
+                    pdf.cell(0, 10, "STATISTICS", ln=True)
+                    pdf.set_font("Arial", size=12)
+                    for key, value in stats.items():
+                        pdf.multi_cell(0, 10, f"{key}: {value}")
             pdf.output(output_path)
             return output_path
 
