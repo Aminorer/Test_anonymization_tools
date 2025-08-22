@@ -1488,7 +1488,7 @@ def display_export_section_advanced():
                 else:
                     st.error("❌ Erreur lors de l'export du document")
 
-            except (OSError, RuntimeError) as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 # Export may fail due to filesystem or document issues
                 st.error(f"❌ Erreur: {str(e)}")
             finally:
