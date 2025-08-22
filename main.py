@@ -273,6 +273,7 @@ def init_session_state():
         "processing_mode": "ai",
         "confidence_threshold": 0.7,
         "processed_file_path": None,
+        "original_file_path": None,
         "current_preset": "standard",
         "entity_manager": EntityManager(),
         "processing_stats": {},
@@ -530,33 +531,43 @@ def process_document_core(file_content, filename, mode, confidence, preset):
     try:
         import tempfile
         import os
-        
+
+        # Supprimer l'ancien fichier original s'il existe
+        old_path = st.session_state.get("original_file_path")
+        if old_path and os.path.exists(old_path):
+            try:
+                os.unlink(old_path)
+            except OSError:
+                pass
+
         # Créer un fichier temporaire
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
             tmp.write(file_content)
             temp_path = tmp.name
-        
+
+        # Conserver le chemin pour l'export ultérieur
+        st.session_state["original_file_path"] = temp_path
+
         # Obtenir l'anonymizer
         anonymizer = get_anonymizer()
-        
+
         # Traitement avec gestion d'erreurs robuste
         result = anonymizer.process_document(temp_path, mode, confidence, audit=False)
-        
+
         return result
-        
+
     except (OSError, ValueError, RuntimeError) as e:
         # Return structured error for file processing issues
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+        st.session_state["original_file_path"] = None
         return {
             "status": "error",
             "error": f"Erreur lors du traitement: {str(e)}"
         }
-    finally:
-        # Nettoyer le fichier temporaire
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.unlink(temp_path)
-            except:
-                pass
 
 def process_document_with_progress(uploaded_file):
     """Traiter le document avec barre de progression avancée"""
@@ -1441,21 +1452,21 @@ def display_export_section_advanced():
                 }
                 audit_flag = generate_report or include_stats
                 
-                # Exporter
+                # Exporter en utilisant le fichier original
                 anonymizer = get_anonymizer()
                 result = anonymizer.export_anonymized_document(
-                    st.session_state.processed_file_path,
+                    st.session_state.get("original_file_path"),
                     st.session_state.entities,
                     export_options,
                     audit=audit_flag,
                 )
-                
+
                 # Téléchargement
                 if result and os.path.exists(result):
                     with open(result, "rb") as f:
                         file_content = f.read()
-                    
-                    file_name = f"anonymized_{Path(st.session_state.processed_file_path).stem}.{export_format}"
+
+                    file_name = f"anonymized_{Path(st.session_state.get('original_file_path')).stem}.{export_format}"
                     st.download_button(
                         "⬇️ Télécharger le document anonymisé",
                         file_content,
@@ -1464,10 +1475,19 @@ def display_export_section_advanced():
                     )
                 else:
                     st.error("❌ Erreur lors de l'export du document")
-                    
+
             except (OSError, RuntimeError) as e:
                 # Export may fail due to filesystem or document issues
                 st.error(f"❌ Erreur: {str(e)}")
+            finally:
+                # Nettoyer le fichier original après l'export
+                original_path = st.session_state.get("original_file_path")
+                if original_path and os.path.exists(original_path):
+                    try:
+                        os.unlink(original_path)
+                    except OSError:
+                        pass
+                st.session_state["original_file_path"] = None
     
     with export_col2:
         st.subheader("📊 Résumé de l'Export")
