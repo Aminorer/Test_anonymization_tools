@@ -47,6 +47,7 @@ seaborn>=0.12.0,<1.0.0
 
 # === TRAITEMENT D'IMAGES ET DOCUMENTS ===
 Pillow>=9.5.0,<11.0.0
+fpdf>=2.7  # Export PDF
 reportlab>=4.0.0  # Pour génération PDF
 
 # === UTILITAIRES SYSTÈME ===
