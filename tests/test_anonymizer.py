@@ -8,6 +8,7 @@ import tempfile
 import os
 from pathlib import Path
 import sys
+import json
 
 # Ajouter le chemin du projet pour les imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -590,6 +591,40 @@ class TestIntegration(unittest.TestCase):
         stats = entity_manager.get_statistics()
         self.assertGreater(stats["total_entities"], 0)
         self.assertGreater(len(stats["entity_types"]), 0)
+
+
+class TestFalsePositiveFiltering(unittest.TestCase):
+    """Tests for false positive filtering using external lists."""
+
+    def test_external_lists_and_boundaries(self):
+        anonymizer = RegexAnonymizer()
+        matches = ["Le Havre", "John Doe", "Parisien Dupont"]
+        filtered = anonymizer._filter_false_positives(matches, "potential_name")
+        self.assertNotIn("Le Havre", filtered)
+        self.assertIn("John Doe", filtered)
+        # Ensure partial words are not removed
+        self.assertIn("Parisien Dupont", filtered)
+
+    def test_environment_extension(self):
+        with mock.patch.dict(os.environ, {"ANONYMIZER_EXTRA_CITIES": "Lille"}, clear=False):
+            anonymizer = RegexAnonymizer()
+            matches = ["Lille", "Jean Martin"]
+            filtered = anonymizer._filter_false_positives(matches, "potential_name")
+            self.assertNotIn("Lille", filtered)
+
+    def test_config_file_extension(self):
+        data = {"legal": ["Code Douanier"]}
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            json.dump(data, f)
+            config_path = f.name
+        try:
+            with mock.patch.dict(os.environ, {"ANONYMIZER_EXTRA_TERMS_FILE": config_path}, clear=False):
+                anonymizer = RegexAnonymizer()
+                matches = ["Code Douanier", "Jean Martin"]
+                filtered = anonymizer._filter_false_positives(matches, "potential_name")
+                self.assertNotIn("Code Douanier", filtered)
+        finally:
+            os.remove(config_path)
 
 if __name__ == "__main__":
     # Configuration des tests

@@ -11,6 +11,7 @@ import logging
 import threading
 import uuid
 from datetime import datetime
+import json
 
 # Configuration logging précoce
 logging.basicConfig(level=logging.WARNING)
@@ -307,7 +308,57 @@ class RegexAnonymizer:
         self.entity_mapping: Dict[str, Dict[str, str]] = {}
         # Compteurs de jetons générés par type d'entité
         self.entity_counters: Dict[str, int] = {}
+        # Patterns pour filtrer les faux positifs
+        self.false_positive_patterns = self._load_false_positive_patterns()
         logging.info(f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns")
+
+    def _load_terms_from_file(self, path: Path) -> List[str]:
+        """Load terms from a file, one per line."""
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        except OSError:
+            logging.warning(f"Term file not found: {path}")
+            return []
+
+    def _load_false_positive_patterns(self) -> Dict[str, Optional[re.Pattern]]:
+        """Load false positive patterns from external lists and env/config."""
+        base_dir = Path(__file__).parent / "resources"
+        lists = {
+            "cities": self._load_terms_from_file(base_dir / "french_cities.txt"),
+            "legal": self._load_terms_from_file(base_dir / "legal_terms.txt"),
+            "titles": self._load_terms_from_file(base_dir / "professional_titles.txt"),
+        }
+
+        config_path = os.getenv("ANONYMIZER_EXTRA_TERMS_FILE")
+        if config_path and Path(config_path).is_file():
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for key in lists:
+                    lists[key].extend(data.get(key, []))
+            except (OSError, json.JSONDecodeError) as e:
+                logging.warning(f"Could not load extra terms file {config_path}: {e}")
+
+        env_vars = {
+            "cities": os.getenv("ANONYMIZER_EXTRA_CITIES", ""),
+            "legal": os.getenv("ANONYMIZER_EXTRA_LEGAL_TERMS", ""),
+            "titles": os.getenv("ANONYMIZER_EXTRA_TITLES", ""),
+        }
+        for key, value in env_vars.items():
+            if value:
+                lists[key].extend([v.strip() for v in value.split(",") if v.strip()])
+
+        patterns: Dict[str, Optional[re.Pattern]] = {}
+        for key, terms in lists.items():
+            terms = [t.strip() for t in terms if t.strip()]
+            if terms:
+                escaped_terms = [re.escape(t) for t in terms]
+                pattern = re.compile(r"\b(?:" + "|".join(escaped_terms) + r")\b", re.IGNORECASE)
+                patterns[key] = pattern
+            else:
+                patterns[key] = None
+        return patterns
     
     def detect_entities(self, text: str) -> List[Entity]:
         """Détection d'entités avec patterns regex optimisés"""
@@ -629,14 +680,18 @@ class RegexAnonymizer:
     def _filter_false_positives(self, matches: List[str], pattern_type: str) -> List[str]:
         """Filtrer les faux positifs selon le type"""
         if pattern_type == "potential_name":
-            # Exclure les mots français courants
-            common_words = {'Le Havre', 'La Rochelle', 'Saint Pierre', 'Notre Dame'}
-            return [m for m in matches if m not in common_words]
-        
+            patterns = self.false_positive_patterns
+            filtered = []
+            for m in matches:
+                if any(p and p.search(m) for p in patterns.values()):
+                    continue
+                filtered.append(m)
+            return filtered
+
         elif pattern_type == "phone_like":
             # Vérifier que c'est vraiment un numéro de téléphone
             return [m for m in matches if len(re.sub(r'\D', '', m)) >= 8]
-        
+
         return matches
     
     def _generate_processing_stats(self, entities: List[Entity], text: str, processing_time: float) -> Dict[str, Any]:
