@@ -93,8 +93,10 @@ class TestRegexAnonymizer(unittest.TestCase):
 
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
-        self.assertEqual(person_map["M. Jean Dûpont"], person_map["Dupont"])
-        self.assertEqual(person_map["Mme de La Tour"], person_map["de La Tour"])
+        dupont_entry = person_map.get("dupont")
+        delatour_entry = person_map.get("de la tour")
+        self.assertEqual(dupont_entry["variants"], {"M. Jean Dûpont", "Dupont"})
+        self.assertEqual(delatour_entry["variants"], {"Mme de La Tour", "de La Tour"})
 
     def test_token_reuse_with_inclusion(self):
         """Un jeton doit être réutilisé pour des valeurs incluses l'une dans l'autre."""
@@ -107,7 +109,9 @@ class TestRegexAnonymizer(unittest.TestCase):
 
         _, mapping = anonymizer.anonymize_text(text, entities)
         org_map = mapping.get("ORG", {})
-        self.assertEqual(org_map["Dupont SARL"], org_map["Dupont"])
+        entry = org_map.get("Dupont SARL")
+        self.assertIn("Dupont SARL", entry["variants"])
+        self.assertIn("Dupont", entry["variants"])
 
     def test_person_token_reuse_with_variants(self):
         """Les variantes orthographiques proches partagent le même jeton."""
@@ -120,7 +124,8 @@ class TestRegexAnonymizer(unittest.TestCase):
 
         _, mapping = anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
-        self.assertEqual(person_map["Jean Dupont"], person_map["J. Dupon"])
+        entry = person_map.get("dupont")
+        self.assertEqual(entry["variants"], {"Jean Dupont", "J. Dupon"})
 
     def test_ssn_detection_valid_invalid(self):
         """Vérifie la détection des NIR valides et le rejet des invalides"""
@@ -186,7 +191,7 @@ class TestRegexAnonymizer(unittest.TestCase):
         self.assertNotIn("01 23 45 67 89", anonymized)
         self.assertIn("[EMAIL_1]", anonymized)
         self.assertIn("[PHONE_1]", anonymized)
-        self.assertEqual(mapping["EMAIL"]["john@example.com"], "[EMAIL_1]")
+        self.assertEqual(mapping["EMAIL"]["john@example.com"]["token"], "[EMAIL_1]")
 
     def test_token_reuse_and_counter_reset(self):
         """Les tokens sont réutilisés et les compteurs se réinitialisent"""
@@ -197,7 +202,7 @@ class TestRegexAnonymizer(unittest.TestCase):
             Entity(id="1", type="EMAIL", value="a@example.com", start=8, end=21),
         ]
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
-        token = mapping["EMAIL"]["a@example.com"]
+        token = mapping["EMAIL"]["a@example.com"]["token"]
         self.assertEqual(token, "[EMAIL_1]")
         self.assertEqual(anonymized.count(token), 2)
 
@@ -206,8 +211,21 @@ class TestRegexAnonymizer(unittest.TestCase):
             Entity(id="1", type="EMAIL", value="b@example.com", start=7, end=20)
         ]
         anonymized2, mapping2 = self.anonymizer.anonymize_text(text2, entities2)
-        token2 = mapping2["EMAIL"]["b@example.com"]
+        token2 = mapping2["EMAIL"]["b@example.com"]["token"]
         self.assertEqual(token2, "[EMAIL_1]")
+
+    def test_variant_aggregation(self):
+        """Les variantes d'un même nom sont regroupées"""
+        text = "Dr Jean Dûpont a rencontré Jean Dupont"
+        entities = [
+            Entity(id="1", type="PERSON", value="Dr Jean Dûpont", start=0, end=14),
+            Entity(id="2", type="PERSON", value="Jean Dupont", start=27, end=38),
+        ]
+        anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
+        entry = mapping["PERSON"]["dupont"]
+        self.assertEqual(entry["token"], "[PERSON_1]")
+        self.assertEqual(entry["canonical"], "dupont")
+        self.assertEqual(entry["variants"], {"Dr Jean Dûpont", "Jean Dupont"})
 
     def test_overlapping_entities(self):
         """Les entités se chevauchant sont remplacées de manière stable"""
@@ -218,8 +236,8 @@ class TestRegexAnonymizer(unittest.TestCase):
             Entity(id="3", type="NAME", value="John", start=13, end=17),
         ]
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
-        token_doe = mapping["NAME"]["John Doe"]
-        token_john = mapping["NAME"]["John"]
+        token_doe = mapping["NAME"]["John Doe"]["token"]
+        token_john = mapping["NAME"]["John"]["token"]
         self.assertNotEqual(token_doe, token_john)
         self.assertEqual(anonymized, f"{token_doe} and {token_john}")
 
@@ -463,7 +481,15 @@ class TestUtils(unittest.TestCase):
 
     def test_serialize_entity_mapping(self):
         """Vérifie la sérialisation du mapping d'entités"""
-        mapping = {"EMAIL": {"a@example.com": "[EMAIL_1]"}}
+        mapping = {
+            "EMAIL": {
+                "a@example.com": {
+                    "token": "[EMAIL_1]",
+                    "variants": {"a@example.com"},
+                    "canonical": "a@example.com",
+                }
+            }
+        }
         json_str = serialize_entity_mapping(mapping)
         self.assertIn("[EMAIL_1]", json_str)
 
@@ -475,6 +501,7 @@ class TestUtils(unittest.TestCase):
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
             self.assertIn("a@example.com", content)
+            self.assertIn("variants", content)
         finally:
             os.unlink(tmp.name)
 
@@ -570,8 +597,10 @@ class TestDocumentAnonymizer(unittest.TestCase):
             counters = result.get("entity_counters", {})
             self.assertEqual(mapping, self.anonymizer.entity_mapping)
             self.assertEqual(counters, self.anonymizer.entity_counters)
-            token = mapping["EMAIL"]["test@example.com"]
+            entry = mapping["EMAIL"]["test@example.com"]
+            token = entry["token"]
             self.assertIn(token, result["anonymized_text"])
+            self.assertEqual(entry["variants"], {"test@example.com"})
             self.assertEqual(counters.get("EMAIL"), 1)
 
             with open(result["anonymized_path"], "r", encoding="utf-8") as rf:

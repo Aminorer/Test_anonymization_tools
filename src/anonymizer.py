@@ -319,7 +319,7 @@ class RegexAnonymizer:
         self.replacements = DEFAULT_REPLACEMENTS
         self.use_french_patterns = use_french_patterns
         # Mapping des valeurs d'entités vers leurs jetons anonymisés
-        self.entity_mapping: Dict[str, Dict[str, str]] = {}
+        self.entity_mapping: Dict[str, Dict[str, Dict[str, Any]]] = {}
         # Compteurs de jetons générés par type d'entité
         self.entity_counters: Dict[str, int] = {}
         # Patterns pour filtrer les faux positifs
@@ -449,12 +449,12 @@ class RegexAnonymizer:
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
 
-    def anonymize_text(self, text: str, entities: List[Entity]) -> Tuple[str, Dict[str, Dict[str, str]]]:
+    def anonymize_text(self, text: str, entities: List[Entity]) -> Tuple[str, Dict[str, Dict[str, Dict[str, Any]]]]:
         """Anonymise le texte en remplaçant les entités détectées.
 
         Returns
         -------
-        Tuple[str, Dict[str, Dict[str, str]]]
+        Tuple[str, Dict[str, Dict[str, Dict[str, Any]]]]
             Le texte anonymisé et le mapping des valeurs originales vers les
             jetons générés par type d'entité.
         """
@@ -469,7 +469,12 @@ class RegexAnonymizer:
             type_map = self.entity_mapping.setdefault(entity.type, {})
             norm_map = normalized_cache.setdefault(entity.type, {})
 
-            key = (
+            norm_value = (
+                normalize_name(entity.value)
+                if entity.type == "PERSON"
+                else entity.value
+            )
+            canonical = (
                 normalize_name(entity.value)
                 if entity.type == "PERSON"
                 else entity.value
@@ -479,8 +484,8 @@ class RegexAnonymizer:
             best_score = 0.0
             best_key: Optional[str] = None
             for existing_key, existing_token in norm_map.items():
-                if key in existing_key or existing_key in key:
-                    score = self._similarity_score(key, existing_key)
+                if norm_value in existing_key or existing_key in norm_value:
+                    score = self._similarity_score(norm_value, existing_key)
                     if score >= self.score_cutoff and score > best_score:
                         best_score = score
                         token = existing_token
@@ -490,9 +495,23 @@ class RegexAnonymizer:
                 count = self.entity_counters.get(entity.type, 0) + 1
                 self.entity_counters[entity.type] = count
                 token = f"[{entity.type}_{count}]"
+                norm_map[norm_value] = token
+                type_map[norm_value] = {
+                    "token": token,
+                    "variants": {entity.value},
+                    "canonical": canonical,
+                }
+            else:
+                norm_map[norm_value] = token
+                if best_key and best_key in type_map:
+                    type_map[best_key]["variants"].add(entity.value)
+                else:
+                    type_map[norm_value] = {
+                        "token": token,
+                        "variants": {entity.value},
+                        "canonical": canonical,
+                    }
 
-            norm_map[key] = token
-            type_map[entity.value] = token
             entity.replacement = token
             replacements.append((entity.value, token))
 
@@ -1907,7 +1926,7 @@ class DocumentAnonymizer:
         self.temp_dir = tempfile.mkdtemp()
         self.prefer_french = prefer_french
         # Mapping des entités pour assurer la cohérence des remplacements
-        self.entity_mapping: Dict[str, Dict[str, str]] = {}
+        self.entity_mapping: Dict[str, Dict[str, Dict[str, Any]]] = {}
         # Compteurs accessibles des jetons générés par type d'entité
         self.entity_counters: Dict[str, int] = {}
 
@@ -2249,7 +2268,10 @@ class DocumentAnonymizer:
                 replacement_map: Dict[str, str] = {}
                 if self.entity_mapping:
                     for type_map in self.entity_mapping.values():
-                        replacement_map.update(type_map)
+                        for info in type_map.values():
+                            token = info.get("token")
+                            for variant in info.get("variants", []):
+                                replacement_map[variant] = token
                 elif entities:
                     for ent in entities:
                         if getattr(ent, "replacement", None):
@@ -2486,7 +2508,10 @@ class DocumentAnonymizer:
             replacement_map: Dict[str, str] = {}
             if self.entity_mapping:
                 for mapping in self.entity_mapping.values():
-                    replacement_map.update(mapping)
+                    for info in mapping.values():
+                        token = info.get("token")
+                        for variant in info.get("variants", []):
+                            replacement_map[variant] = token
             elif entities:
                 for ent in entities:
                     if isinstance(ent, dict):
