@@ -44,7 +44,12 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
-from .utils import generate_anonymization_stats, serialize_entity_mapping, compute_confidence
+from .utils import (
+    generate_anonymization_stats,
+    serialize_entity_mapping,
+    compute_confidence,
+    normalize_name,
+)
 
 # === IMPORTS DOCUMENT ===
 try:
@@ -431,17 +436,26 @@ class RegexAnonymizer:
 
         # Première passe : construire le mapping des entités
         replacements: List[Tuple[str, str]] = []
+        normalized_cache: Dict[str, Dict[str, str]] = {}
         for entity in entities:
             type_map = self.entity_mapping.setdefault(entity.type, {})
+            norm_map = normalized_cache.setdefault(entity.type, {})
 
-            if entity.value in type_map:
-                token = type_map[entity.value]
+            key = (
+                normalize_name(entity.value)
+                if entity.type == "PERSON"
+                else entity.value
+            )
+
+            if key in norm_map:
+                token = norm_map[key]
             else:
                 count = self.entity_counters.get(entity.type, 0) + 1
                 self.entity_counters[entity.type] = count
                 token = f"[{entity.type}_{count}]"
-                type_map[entity.value] = token
+                norm_map[key] = token
 
+            type_map[entity.value] = token
             entity.replacement = token
             replacements.append((entity.value, token))
 

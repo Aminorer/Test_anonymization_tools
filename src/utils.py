@@ -3,11 +3,80 @@ import tempfile
 import uuid
 import shutil
 import logging
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import hashlib
 import json
+
+TITLE_REGEX = re.compile(r"^(?:m(?:r|me|lle)?|mr|mme|mlle|dr|prof|me|ma(?:itre|ître))\.?\s+", re.IGNORECASE)
+PARTICLES = {
+    "de",
+    "du",
+    "des",
+    "d",
+    "van",
+    "von",
+    "la",
+    "le",
+    "del",
+    "di",
+    "da",
+    "dos",
+    "das",
+    "do",
+    "ten",
+    "ter",
+}
+
+def normalize_name(value: str) -> str:
+    """Normalize a personal name for consistent anonymization.
+
+    The function removes titles, strips first names while preserving particles,
+    converts the result to lowercase and removes diacritics.
+
+    Parameters
+    ----------
+    value: str
+        Original name value.
+
+    Returns
+    -------
+    str
+        Normalized last name with particles in lowercase without diacritics.
+    """
+    if not value:
+        return ""
+
+    # Remove civil titles
+    name = TITLE_REGEX.sub("", value).strip()
+    if not name:
+        return ""
+
+    # Remove diacritics
+    name = unicodedata.normalize("NFKD", name)
+    name = "".join(c for c in name if not unicodedata.combining(c))
+
+    # Lowercase for uniformity
+    name = name.lower()
+
+    tokens = name.split()
+    if not tokens:
+        return ""
+
+    last_parts: List[str] = []
+    while tokens:
+        token = tokens.pop()
+        last_parts.insert(0, token)
+        if token in PARTICLES:
+            continue
+        while tokens and tokens[-1] in PARTICLES:
+            last_parts.insert(0, tokens.pop())
+        break
+
+    return " ".join(last_parts)
 
 def format_file_size(size_bytes: int) -> str:
     """Formater la taille d'un fichier en unités lisibles"""
