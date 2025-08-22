@@ -212,7 +212,7 @@ def merge_entities(entities1: List[Dict], entities2: List[Dict]) -> List[Dict]:
 def filter_entities_by_confidence(entities: List[Dict], min_confidence: float) -> List[Dict]:
     """Filtrer les entités par seuil de confiance"""
     return [
-        entity for entity in entities 
+        entity for entity in entities
         if entity.get('confidence', 1.0) >= min_confidence
     ]
 
@@ -222,6 +222,40 @@ def filter_entities_by_type(entities: List[Dict], entity_types: List[str]) -> Li
         entity for entity in entities 
         if entity.get('type', '') in entity_types
     ]
+
+
+def compute_confidence(
+    method_score: float,
+    validation_score: float,
+    agreement_score: float,
+    weights: Optional[Dict[str, float]] = None,
+) -> float:
+    """Calculer la confiance finale d'une entité.
+
+    Parameters
+    ----------
+    method_score: float
+        Score de détection selon la méthode utilisée (regex/IA).
+    validation_score: float
+        Score reflétant la réussite des validations (checksums, formats...).
+    agreement_score: float
+        Score d'accord entre différentes méthodes de détection.
+    weights: Optional[Dict[str, float]]
+        Poids à appliquer à chaque composant. Défaut: 50% méthode,
+        30% validation, 20% accord.
+
+    Returns
+    -------
+    float
+        Score de confiance final borné entre 0 et 1.
+    """
+    weights = weights or {"method": 0.5, "validation": 0.3, "agreement": 0.2}
+    final = (
+        method_score * weights.get("method", 0)
+        + validation_score * weights.get("validation", 0)
+        + agreement_score * weights.get("agreement", 0)
+    )
+    return max(0.0, min(1.0, final))
 
 def sort_entities_by_position(entities: List[Dict]) -> List[Dict]:
     """Trier les entités par position dans le texte"""
@@ -260,7 +294,11 @@ def calculate_text_coverage(entities: List[Dict], text_length: int) -> float:
     
     return (total_covered / text_length) * 100
 
-def generate_anonymization_stats(entities: List[Dict], text_length: int) -> Dict[str, Any]:
+def generate_anonymization_stats(
+    entities: List[Dict],
+    text_length: int,
+    thresholds: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     """Générer des statistiques complètes d'anonymisation"""
     if not entities:
         return {
@@ -285,14 +323,17 @@ def generate_anonymization_stats(entities: List[Dict], text_length: int) -> Dict
     
     # Statistiques de confiance
     confidence_stats = {}
+    thresholds = thresholds or {"high": 0.8, "medium": 0.5}
     if confidences:
+        high = thresholds.get("high", 0.8)
+        medium = thresholds.get("medium", 0.5)
         confidence_stats = {
             "min": min(confidences),
             "max": max(confidences),
             "average": sum(confidences) / len(confidences),
-            "high_confidence_count": len([c for c in confidences if c >= 0.8]),
-            "medium_confidence_count": len([c for c in confidences if 0.5 <= c < 0.8]),
-            "low_confidence_count": len([c for c in confidences if c < 0.5])
+            "high_confidence_count": len([c for c in confidences if c >= high]),
+            "medium_confidence_count": len([c for c in confidences if medium <= c < high]),
+            "low_confidence_count": len([c for c in confidences if c < medium])
         }
     
     # Couverture du texte

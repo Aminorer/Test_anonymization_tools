@@ -509,7 +509,7 @@ class EntityManager:
     
     # Statistiques et analyse
     
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self, thresholds: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """Récupérer des statistiques sur les entités et groupes"""
         entity_types = {}
         confidence_values = []
@@ -523,14 +523,17 @@ class EntityManager:
         
         # Statistiques de confiance
         confidence_stats = {}
+        thresholds = thresholds or {"high": 0.8, "medium": 0.5}
         if confidence_values:
+            high = thresholds.get("high", 0.8)
+            medium = thresholds.get("medium", 0.5)
             confidence_stats = {
                 'min': min(confidence_values),
                 'max': max(confidence_values),
                 'average': sum(confidence_values) / len(confidence_values),
-                'high_confidence_count': len([c for c in confidence_values if c >= 0.8]),
-                'medium_confidence_count': len([c for c in confidence_values if 0.5 <= c < 0.8]),
-                'low_confidence_count': len([c for c in confidence_values if c < 0.5])
+                'high_confidence_count': len([c for c in confidence_values if c >= high]),
+                'medium_confidence_count': len([c for c in confidence_values if medium <= c < high]),
+                'low_confidence_count': len([c for c in confidence_values if c < medium])
             }
         
         # Statistiques des groupes

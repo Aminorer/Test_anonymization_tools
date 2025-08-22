@@ -44,7 +44,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
-from .utils import generate_anonymization_stats, serialize_entity_mapping
+from .utils import generate_anonymization_stats, serialize_entity_mapping, compute_confidence
 
 # === IMPORTS DOCUMENT ===
 try:
@@ -185,6 +185,9 @@ DEFAULT_REPLACEMENTS = {
     "IBAN": "[IBAN]",
     "DATE": "[DATE]"
 }
+
+# Types d'entités disposant de validations fortes
+VALIDATED_ENTITY_TYPES = {"EMAIL", "PHONE", "IBAN", "SIRET", "SIREN", "SSN", "TVA"}
 
 # === FILTRES FRANÇAIS ===
 try:
@@ -360,7 +363,12 @@ class RegexAnonymizer:
                 patterns[key] = None
         return patterns
     
-    def detect_entities(self, text: str) -> List[Entity]:
+    def detect_entities(
+        self,
+        text: str,
+        min_confidence: float = 0.0,
+        compute_conf: bool = True,
+    ) -> List[Entity]:
         """Détection d'entités avec patterns regex optimisés"""
         entities = []
         entity_id = 0
@@ -398,7 +406,13 @@ class RegexAnonymizer:
         # Post-traitement: éliminer chevauchements et nettoyer
         entities = self._remove_overlapping_entities(entities)
         entities = self._clean_entities(entities)
-        
+
+        if compute_conf:
+            for entity in entities:
+                validation_score = 1.0 if entity.type in VALIDATED_ENTITY_TYPES else 0.5
+                entity.confidence = compute_confidence(1.0, validation_score, 0.0)
+            entities = [e for e in entities if e.confidence >= min_confidence]
+
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
 
@@ -694,7 +708,13 @@ class RegexAnonymizer:
 
         return matches
     
-    def _generate_processing_stats(self, entities: List[Entity], text: str, processing_time: float) -> Dict[str, Any]:
+    def _generate_processing_stats(
+        self,
+        entities: List[Entity],
+        text: str,
+        processing_time: float,
+        thresholds: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """Générer des statistiques complètes de traitement"""
         entity_types = {}
         confidence_values = []
@@ -715,15 +735,18 @@ class RegexAnonymizer:
         
         # Statistiques de confiance
         confidence_stats = {}
+        thresholds = thresholds or {"high": 0.8, "medium": 0.5}
         if confidence_values:
+            high = thresholds.get("high", 0.8)
+            medium = thresholds.get("medium", 0.5)
             confidence_stats = {
                 "min": min(confidence_values),
                 "max": max(confidence_values),
                 "average": sum(confidence_values) / len(confidence_values),
                 "std": self._calculate_std(confidence_values),
-                "high_confidence_count": len([c for c in confidence_values if c >= 0.8]),
-                "medium_confidence_count": len([c for c in confidence_values if 0.5 <= c < 0.8]),
-                "low_confidence_count": len([c for c in confidence_values if c < 0.5])
+                "high_confidence_count": len([c for c in confidence_values if c >= high]),
+                "medium_confidence_count": len([c for c in confidence_values if medium <= c < high]),
+                "low_confidence_count": len([c for c in confidence_values if c < medium])
             }
         
         return {
@@ -1105,10 +1128,15 @@ class AIAnonymizer:
             except (OSError, RuntimeError, ValueError) as e2:
                 raise Exception(f"Tous les modèles Transformers ont échoué: {e}, {e2}")
     
-    def detect_entities_ai(self, text: str, confidence_threshold: float = 0.7) -> List[Entity]:
+    def detect_entities_ai(
+        self,
+        text: str,
+        confidence_threshold: float = 0.7,
+        final_threshold: float = 0.0,
+    ) -> List[Entity]:
         """Détection d'entités avec IA + fusion regex"""
-        entities = []
-        
+        ai_entities: List[Entity] = []
+
         # Étape 1: Détection IA
         if self.model_loaded:
             try:
@@ -1116,22 +1144,23 @@ class AIAnonymizer:
                     ai_entities = self._detect_with_spacy(text, confidence_threshold)
                 elif self.nlp_pipeline:
                     ai_entities = self._detect_with_transformers(text, confidence_threshold)
-                else:
-                    ai_entities = []
-                
-                entities.extend(ai_entities)
                 logging.info(f"IA: {len(ai_entities)} entités détectées")
-                
             except (RuntimeError, ValueError) as e:
                 logging.error(f"Erreur détection IA: {e}")
-        
+
         # Étape 2: Compléter avec regex pour les entités structurées
-        regex_entities = self.regex_anonymizer.detect_entities(text)
-        entities.extend(self._merge_regex_entities(entities, regex_entities))
-        
+        regex_entities = self.regex_anonymizer.detect_entities(
+            text, compute_conf=False
+        )
+        self._compute_agreement_scores(regex_entities, ai_entities)
+        merged_regex = self._merge_regex_entities(ai_entities, regex_entities)
+        entities = ai_entities + merged_regex
+
         # Étape 3: Post-traitement final
         entities = self._post_process_entities(entities, text)
-        
+        self._apply_final_confidence(entities)
+        entities = [e for e in entities if e.confidence >= final_threshold]
+
         logging.info(f"Total final: {len(entities)} entités")
         return entities
     
@@ -1331,13 +1360,38 @@ class AIAnonymizer:
         """Calculer le pourcentage de chevauchement entre deux entités"""
         if entity1.end <= entity2.start or entity2.end <= entity1.start:
             return 0.0  # Pas de chevauchement
-        
+
         overlap_start = max(entity1.start, entity2.start)
         overlap_end = min(entity1.end, entity2.end)
         overlap_length = max(0, overlap_end - overlap_start)
         total_length = min(entity1.end, entity2.end) - max(entity1.start, entity2.start)
-        
+
         return overlap_length / total_length if total_length > 0 else 0.0
+
+    def _compute_agreement_scores(
+        self, regex_entities: List[Entity], ai_entities: List[Entity]
+    ) -> None:
+        """Marquer les entités en accord entre regex et IA."""
+        for ent in regex_entities + ai_entities:
+            setattr(ent, "_agreement", 0.0)
+
+        for r in regex_entities:
+            for a in ai_entities:
+                if self._calculate_overlap(r, a) >= 0.5:
+                    r._agreement = 1.0
+                    a._agreement = 1.0
+
+    def _apply_final_confidence(self, entities: List[Entity]) -> None:
+        """Calculer la confiance finale pour chaque entité."""
+        for ent in entities:
+            method_score = 1.0 if ent.method == "regex" else ent.confidence
+            validation_score = (
+                1.0 if ent.type in VALIDATED_ENTITY_TYPES else 0.5
+            )
+            agreement_score = getattr(ent, "_agreement", 0.0)
+            ent.confidence = compute_confidence(
+                method_score, validation_score, agreement_score
+            )
     
     def _extract_context(self, text: str, start: int, end: int, context_length: int = 120) -> str:
         """Extraction de contexte intelligent"""
@@ -1912,7 +1966,13 @@ class DocumentAnonymizer:
             if self.ai_anonymizer:
                 self.ai_anonymizer.filter_config = self.filter_config
 
-    def _generate_processing_stats(self, entities: List[Entity], text: str, processing_time: float) -> Dict[str, Any]:
+    def _generate_processing_stats(
+        self,
+        entities: List[Entity],
+        text: str,
+        processing_time: float,
+        thresholds: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, Any]:
         """Générer des statistiques complètes de traitement"""
         entity_types: Dict[str, int] = {}
         confidence_values: List[float] = []
@@ -1933,15 +1993,18 @@ class DocumentAnonymizer:
 
         # Statistiques de confiance
         confidence_stats: Dict[str, Any] = {}
+        thresholds = thresholds or {"high": 0.8, "medium": 0.5}
         if confidence_values:
+            high = thresholds.get("high", 0.8)
+            medium = thresholds.get("medium", 0.5)
             confidence_stats = {
                 "min": min(confidence_values),
                 "max": max(confidence_values),
                 "average": sum(confidence_values) / len(confidence_values),
                 "std": self._calculate_std(confidence_values),
-                "high_confidence_count": len([c for c in confidence_values if c >= 0.8]),
-                "medium_confidence_count": len([c for c in confidence_values if 0.5 <= c < 0.8]),
-                "low_confidence_count": len([c for c in confidence_values if c < 0.5])
+                "high_confidence_count": len([c for c in confidence_values if c >= high]),
+                "medium_confidence_count": len([c for c in confidence_values if medium <= c < high]),
+                "low_confidence_count": len([c for c in confidence_values if c < medium])
             }
 
         return {
