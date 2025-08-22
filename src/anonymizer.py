@@ -1749,14 +1749,214 @@ class DocumentAnonymizer:
         anonymized_text: str,
         metadata: Dict,
         entities: Optional[List[Entity]] = None,
+        export_format: str = "txt",
+        watermark: Optional[str] = None,
+        include_report: bool = False,
+        include_stats: bool = False,
     ) -> str:
-        """Créer un fichier texte anonymisé basique"""
-        output_path = os.path.join(
-            self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.txt"
-        )
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(anonymized_text)
-        return output_path
+        """Créer un document anonymisé dans différents formats.
+
+        Parameters
+        ----------
+        original_path: str
+            Chemin vers le document original.
+        anonymized_text: str
+            Texte anonymisé à exporter.
+        metadata: Dict
+            Métadonnées d'anonymisation.
+        entities: Optional[List[Entity]]
+            Liste d'entités détectées.
+        export_format: str
+            Format d'export (txt, docx, pdf).
+        watermark: Optional[str]
+            Filigrane à ajouter au document.
+        include_report: bool
+            Inclure ou non un rapport d'audit/métadonnées.
+        include_stats: bool
+            Inclure ou non les statistiques d'anonymisation.
+        """
+
+        export_format = (export_format or "txt").lower()
+        entities = entities or []
+
+        stats: Optional[Dict[str, Any]] = None
+        if include_stats:
+            try:
+                stats = generate_anonymization_stats(
+                    [asdict(e) if isinstance(e, Entity) else e for e in entities],
+                    len(anonymized_text),
+                )
+            except Exception:
+                stats = None
+
+        if export_format == "docx":
+            if not DOCX_SUPPORT:
+                raise RuntimeError("DOCX export requires python-docx")
+
+            try:
+                doc = Document()
+
+                header = doc.sections[0].header
+                header_para = header.paragraphs[0]
+                header_para.text = (
+                    watermark
+                    if watermark
+                    else "DOCUMENT ANONYMISÉ - CONFORME RGPD"
+                )
+
+                doc.add_heading("DOCUMENT ANONYMISÉ", 0)
+                doc.add_heading("INFORMATIONS D'ANONYMISATION", 1)
+
+                info_para = doc.add_paragraph()
+                info_para.add_run("Document original: ").bold = True
+                info_para.add_run(f"{Path(original_path).name}\n")
+                info_para.add_run("Date d'anonymisation: ").bold = True
+                info_para.add_run(
+                    f"{datetime.now().strftime('%d/%m/%Y à %H:%M:%S')}\n"
+                )
+                for key, value in metadata.items():
+                    info_para.add_run(f"{key}: ").bold = True
+                    info_para.add_run(f"{value}\n")
+                info_para.add_run("Entités anonymisées: ").bold = True
+                info_para.add_run(f"{len(entities)}\n")
+
+                if include_stats and stats:
+                    doc.add_heading("RÉCAPITULATIF DES ENTITÉS", 2)
+                    entity_types = stats.get("entity_types", {})
+                    table = doc.add_table(
+                        rows=len(entity_types) + 1, cols=3
+                    )
+                    table.style = "Table Grid"
+                    header_cells = table.rows[0].cells
+                    header_cells[0].text = "Type d'entité"
+                    header_cells[1].text = "Nombre"
+                    header_cells[2].text = "Pourcentage"
+
+                    for i, (entity_type, count) in enumerate(
+                        sorted(entity_types.items()), 1
+                    ):
+                        row = table.rows[i].cells
+                        row[0].text = entity_type
+                        row[1].text = str(count)
+                        percentage = (
+                            (count / len(entities) * 100) if entities else 0
+                        )
+                        row[2].text = f"{percentage:.1f}%"
+
+                doc.add_page_break()
+                doc.add_heading("CONTENU ANONYMISÉ", 1)
+                for paragraph in anonymized_text.split("\n"):
+                    if paragraph.strip():
+                        doc.add_paragraph(paragraph.strip())
+
+                if include_report:
+                    doc.add_page_break()
+                    doc.add_heading("RAPPORT D'AUDIT RGPD", 1)
+                    audit_para = doc.add_paragraph()
+                    audit_para.add_run("Conformité RGPD:\n").bold = True
+                    audit_para.add_run(
+                        "• Article 4(5) - Pseudonymisation: Appliquée\n"
+                    )
+                    audit_para.add_run(
+                        "• Article 25 - Protection dès la conception: Respectée\n"
+                    )
+                    audit_para.add_run(
+                        "• Article 32 - Sécurité du traitement: Mise en œuvre\n"
+                    )
+                    audit_para.add_run(
+                        "• Recital 26 - Anonymisation: Conforme\n\n"
+                    )
+                    audit_para.add_run("Recommandations:\n").bold = True
+                    audit_para.add_run(
+                        "• Vérifiez manuellement les entités détectées\n"
+                    )
+                    audit_para.add_run(
+                        "• Conservez ce rapport pour traçabilité\n"
+                    )
+                    audit_para.add_run(
+                        "• Relecture recommandée avant diffusion\n"
+                    )
+
+                footer = doc.sections[0].footer
+                footer_para = footer.paragraphs[0]
+                document_hash = hashlib.md5(
+                    anonymized_text.encode("utf-8")
+                ).hexdigest()[:16]
+                document_id = str(uuid.uuid4())[:8].upper()
+                footer_para.text = (
+                    f"Anonymiseur v2.0 - ID: {document_id} - "
+                    f"Hash: {document_hash} - "
+                    f"Généré: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                )
+
+                output_path = os.path.join(
+                    self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.docx"
+                )
+                doc.save(output_path)
+                return output_path
+
+            except (OSError, ValueError) as e:
+                logging.error(f"Erreur création document: {e}")
+                raise RuntimeError(
+                    f"Impossible de créer le document anonymisé: {str(e)}"
+                ) from e
+
+        elif export_format == "txt":
+            output_path = os.path.join(
+                self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.txt"
+            )
+            with open(output_path, "w", encoding="utf-8") as f:
+                if watermark:
+                    f.write(f"{watermark}\n\n")
+                f.write(anonymized_text)
+                if include_report and metadata:
+                    f.write("\n\n=== METADATA ===\n")
+                    for key, value in metadata.items():
+                        f.write(f"{key}: {value}\n")
+                if include_stats and stats:
+                    f.write("\n\n=== STATISTICS ===\n")
+                    for key, value in stats.items():
+                        f.write(f"{key}: {value}\n")
+            return output_path
+
+        elif export_format == "pdf":
+            try:
+                from fpdf import FPDF
+            except ImportError as e:
+                raise RuntimeError("PDF export requires fpdf") from e
+
+            output_path = os.path.join(
+                self.temp_dir, f"anonymized_{uuid.uuid4().hex[:8]}.pdf"
+            )
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            if watermark:
+                pdf.set_text_color(200, 200, 200)
+                pdf.text(10, 10, str(watermark))
+                pdf.set_text_color(0, 0, 0)
+            for line in anonymized_text.splitlines():
+                pdf.multi_cell(0, 10, line)
+            if include_report and metadata:
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 10, "METADATA", ln=True)
+                pdf.set_font("Arial", size=12)
+                for key, value in metadata.items():
+                    pdf.multi_cell(0, 10, f"{key}: {value}")
+            if include_stats and stats:
+                pdf.add_page()
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 10, "STATISTICS", ln=True)
+                pdf.set_font("Arial", size=12)
+                for key, value in stats.items():
+                    pdf.multi_cell(0, 10, f"{key}: {value}")
+            pdf.output(output_path)
+            return output_path
+
+        else:
+            raise ValueError(f"Unsupported export format: {export_format}")
 
     def _write_export(
         self,
