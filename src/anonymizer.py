@@ -325,6 +325,8 @@ class RegexAnonymizer:
         self.entity_mapping: Dict[str, Dict[str, Dict[str, Any]]] = {}
         # Compteurs de jetons générés par type d'entité
         self.entity_counters: Dict[str, int] = {}
+        # Historique des fusions de valeurs vers un même jeton
+        self.merge_history: List[Dict[str, Any]] = []
         # Patterns pour filtrer les faux positifs
         self.false_positive_patterns = self._load_false_positive_patterns()
         # Paramètres de similarité
@@ -507,16 +509,28 @@ class RegexAnonymizer:
                     "token": token,
                     "variants": {entity.value},
                     "canonical": canonical,
+                    "origin": entity.value,
+                    "origin_timestamp": datetime.now().isoformat(),
                 }
             else:
                 norm_map[norm_value] = token
                 if best_key and best_key in type_map:
-                    type_map[best_key]["variants"].add(entity.value)
+                    entry = type_map[best_key]
+                    if entity.value not in entry["variants"]:
+                        entry["variants"].add(entity.value)
+                        self.merge_history.append({
+                            "original": entry.get("origin", best_key),
+                            "variant": entity.value,
+                            "token": token,
+                            "timestamp": datetime.now().isoformat(),
+                        })
                 else:
                     type_map[norm_value] = {
                         "token": token,
                         "variants": {entity.value},
                         "canonical": canonical,
+                        "origin": entity.value,
+                        "origin_timestamp": datetime.now().isoformat(),
                     }
 
             entity.replacement = token
@@ -527,6 +541,28 @@ class RegexAnonymizer:
             text = re.sub(re.escape(original), token, text)
 
         return text, self.entity_mapping
+
+    def export_merge_history(self, file_path: Optional[str] = None) -> str:
+        """Exporter l'historique des fusions au format JSON.
+
+        Parameters
+        ----------
+        file_path : Optional[str]
+            Si fourni, le JSON est écrit dans ce fichier.
+
+        Returns
+        -------
+        str
+            Chaîne JSON représentant l'historique complet.
+        """
+        data = json.dumps(self.merge_history, ensure_ascii=False, indent=2)
+        if file_path:
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(data)
+            except OSError:
+                logging.warning("Impossible d'écrire le fichier d'historique: %s", file_path)
+        return data
 
     def _validate_date_fr(self, date_str: str, context: Optional[str] = None) -> bool:
         """Validation d'une date française avec vérification du contexte légal"""

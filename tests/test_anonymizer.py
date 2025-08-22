@@ -112,6 +112,33 @@ class TestRegexAnonymizer(unittest.TestCase):
         entry = org_map.get("Dupont SARL")
         self.assertIn("Dupont SARL", entry["variants"])
         self.assertIn("Dupont", entry["variants"])
+        self.assertEqual(entry["origin"], "Dupont SARL")
+        self.assertEqual(len(anonymizer.merge_history), 1)
+        hist = anonymizer.merge_history[0]
+        self.assertEqual(hist["original"], "Dupont SARL")
+        self.assertEqual(hist["variant"], "Dupont")
+        self.assertEqual(hist["token"], entry["token"])
+
+    def test_token_reuse_with_inclusion_reverse_order(self):
+        """Le jeton est réutilisé même si la forme courte apparaît en premier."""
+        anonymizer = RegexAnonymizer(score_cutoff=0.7)
+        text = "Dupont travaille avec la société Dupont SARL."
+        entities = [
+            Entity(id="1", type="ORG", value="Dupont", start=0, end=0),
+            Entity(id="2", type="ORG", value="Dupont SARL", start=0, end=0),
+        ]
+
+        _, mapping = anonymizer.anonymize_text(text, entities)
+        org_map = mapping.get("ORG", {})
+        entry = org_map.get("Dupont")
+        self.assertIn("Dupont", entry["variants"])
+        self.assertIn("Dupont SARL", entry["variants"])
+        self.assertEqual(entry["origin"], "Dupont")
+        self.assertEqual(len(anonymizer.merge_history), 1)
+        hist = anonymizer.merge_history[0]
+        self.assertEqual(hist["original"], "Dupont")
+        self.assertEqual(hist["variant"], "Dupont SARL")
+        self.assertEqual(hist["token"], entry["token"])
 
     def test_person_token_reuse_with_variants(self):
         """Les variantes orthographiques proches partagent le même jeton."""
