@@ -342,6 +342,31 @@ class RegexAnonymizer:
         self.score_cutoff = (
             score_cutoff if score_cutoff is not None else get_similarity_threshold()
         )
+        # Pré-chargement de la fonction de similarité pour éviter les reimportations
+        self._similarity_func = None
+        try:
+            if self.algorithm == "rapidfuzz":
+                from rapidfuzz import fuzz
+
+                self._similarity_func = lambda a, b: fuzz.ratio(a, b) / 100.0
+            elif self.algorithm in {"levenshtein", "python-Levenshtein"}:
+                from Levenshtein import ratio  # type: ignore
+
+                self._similarity_func = ratio
+            else:  # pragma: no cover - unexpected algorithm
+                raise ImportError
+        except ImportError:
+            logging.warning(
+                "Similarity algorithm %s not available, falling back to Levenshtein",
+                self.algorithm,
+            )
+            self.algorithm = "levenshtein"
+            try:
+                from Levenshtein import ratio  # type: ignore
+
+                self._similarity_func = ratio
+            except ImportError:
+                self._similarity_func = None
         # Titres utilisés pour la normalisation des noms
         self.titles = titles if titles is not None else get_name_normalization_titles()
         # Cache des valeurs normalisées pour éviter les recalculs
@@ -354,21 +379,10 @@ class RegexAnonymizer:
         )
 
     def _similarity_score(self, a: str, b: str) -> float:
-        """Compute similarity score between two strings using the configured algorithm."""
-        try:
-            if self.algorithm == "rapidfuzz":
-                from rapidfuzz import fuzz
-
-                return fuzz.ratio(a, b) / 100.0
-            elif self.algorithm in {"levenshtein", "python-Levenshtein"}:
-                from Levenshtein import ratio  # type: ignore
-
-                return ratio(a, b)
-        except ImportError:
-            logging.warning(
-                "Similarity algorithm %s not available", self.algorithm
-            )
-        return 0.0
+        """Compute similarity score between two strings using the pre-loaded algorithm."""
+        if self._similarity_func is None:
+            return 0.0
+        return self._similarity_func(a, b)
 
     def _get_normalized_value(self, value: str, entity_type: str) -> str:
         """Return cached normalized value for PERSON entities."""
