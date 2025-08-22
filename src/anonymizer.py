@@ -307,8 +307,14 @@ class Entity:
 
 class RegexAnonymizer:
     """Anonymiseur Regex avancé avec patterns français optimisés"""
-    
-    def __init__(self, use_french_patterns: bool = True):
+
+    def __init__(
+        self,
+        use_french_patterns: bool = True,
+        *,
+        algorithm: str = "rapidfuzz",
+        score_cutoff: float = 0.9,
+    ):
         self.patterns = FRENCH_ENTITY_PATTERNS if use_french_patterns else ENTITY_PATTERNS
         self.replacements = DEFAULT_REPLACEMENTS
         self.use_french_patterns = use_french_patterns
@@ -318,7 +324,29 @@ class RegexAnonymizer:
         self.entity_counters: Dict[str, int] = {}
         # Patterns pour filtrer les faux positifs
         self.false_positive_patterns = self._load_false_positive_patterns()
-        logging.info(f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns")
+        # Paramètres de similarité
+        self.algorithm = algorithm
+        self.score_cutoff = score_cutoff
+        logging.info(
+            f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns"
+        )
+
+    def _similarity_score(self, a: str, b: str) -> float:
+        """Compute similarity score between two strings using the configured algorithm."""
+        try:
+            if self.algorithm == "rapidfuzz":
+                from rapidfuzz import fuzz
+
+                return fuzz.ratio(a, b) / 100.0
+            elif self.algorithm in {"levenshtein", "python-Levenshtein"}:
+                from Levenshtein import ratio  # type: ignore
+
+                return ratio(a, b)
+        except ImportError:
+            logging.warning(
+                "Similarity algorithm %s not available", self.algorithm
+            )
+        return 0.0
 
     def _load_terms_from_file(self, path: Path) -> List[str]:
         """Load terms from a file, one per line."""
@@ -447,14 +475,23 @@ class RegexAnonymizer:
                 else entity.value
             )
 
-            if key in norm_map:
-                token = norm_map[key]
-            else:
+            token: Optional[str] = None
+            best_score = 0.0
+            best_key: Optional[str] = None
+            for existing_key, existing_token in norm_map.items():
+                if key in existing_key or existing_key in key:
+                    score = self._similarity_score(key, existing_key)
+                    if score >= self.score_cutoff and score > best_score:
+                        best_score = score
+                        token = existing_token
+                        best_key = existing_key
+
+            if token is None:
                 count = self.entity_counters.get(entity.type, 0) + 1
                 self.entity_counters[entity.type] = count
                 token = f"[{entity.type}_{count}]"
-                norm_map[key] = token
 
+            norm_map[key] = token
             type_map[entity.value] = token
             entity.replacement = token
             replacements.append((entity.value, token))
