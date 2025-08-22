@@ -451,6 +451,37 @@ class RegexAnonymizer:
 
         return text, self.entity_mapping
 
+    def _validate_date_fr(self, date_str: str, context: Optional[str] = None) -> bool:
+        """Validation d'une date française avec vérification du contexte légal"""
+        if not date_str:
+            return False
+
+        # Vérifier la validité de la date (jour/mois/année)
+        try:
+            sep = "/" if "/" in date_str else "-"
+            parsed = datetime.strptime(date_str, f"%d{sep}%m{sep}%Y")
+            if parsed.year < 1900 or parsed.year > 2100:
+                return False
+        except ValueError:
+            return False
+
+        # Vérifier que le contexte n'indique pas un article ou une référence légale
+        if context:
+            lowered = context.lower().replace("**", "")
+            try:
+                idx = lowered.index(date_str.lower())
+            except ValueError:
+                idx = -1
+
+            if idx != -1:
+                start = max(0, idx - 20)
+                end = min(len(lowered), idx + len(date_str) + 20)
+                window = lowered[start:end]
+                if re.search(r"\b(article|art\.|loi|décret|code)\b", window):
+                    return False
+
+        return True
+
     def _clean_entities(self, entities: List[Entity]) -> List[Entity]:
         """Nettoyage et validation finale des entités détectées"""
         cleaned = []
@@ -474,6 +505,10 @@ class RegexAnonymizer:
             elif entity.type == "IBAN":
                 if not EntityValidator.validate_iban_fr(entity.value):
                     logging.warning(f"IBAN invalide ignoré: {entity.value}")
+                    continue
+            elif entity.type == "DATE":
+                if not self._validate_date_fr(entity.value, entity.context):
+                    logging.warning(f"Date invalide ignorée: {entity.value}")
                     continue
             elif entity.type == "SIREN":
                 if not EntityValidator.validate_siren(entity.value):
