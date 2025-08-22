@@ -540,7 +540,7 @@ def process_document_core(file_content, filename, mode, confidence, preset):
         anonymizer = get_anonymizer()
         
         # Traitement avec gestion d'erreurs robuste
-        result = anonymizer.process_document(temp_path, mode, confidence)
+        result = anonymizer.process_document(temp_path, mode, confidence, audit=False)
         
         return result
         
@@ -1438,16 +1438,16 @@ def display_export_section_advanced():
                 export_options = {
                     "format": export_format,
                     "watermark": watermark_text if add_watermark else None,
-                    "include_report": generate_report,
-                    "include_stats": include_stats
                 }
+                audit_flag = generate_report or include_stats
                 
                 # Exporter
                 anonymizer = get_anonymizer()
                 result = anonymizer.export_anonymized_document(
                     st.session_state.processed_file_path,
                     st.session_state.entities,
-                    export_options
+                    export_options,
+                    audit=audit_flag,
                 )
                 
                 # Téléchargement

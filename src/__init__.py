@@ -16,7 +16,7 @@ Usage:
     from src.entity_manager import EntityManager
     
     anonymizer = DocumentAnonymizer()
-    result = anonymizer.process_document("document.pdf", mode="ai")
+    result = anonymizer.process_document("document.pdf", mode="ai", audit=False)
 """
 
 __version__ = "2.0.0"

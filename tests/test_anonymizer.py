@@ -336,15 +336,14 @@ class TestDocumentAnonymizer(unittest.TestCase):
                 entities,
                 export_format="txt",
                 watermark="WM",
-                include_report=True,
-                include_stats=True,
+                audit=True,
             )
 
             self.assertTrue(os.path.exists(result_path))
             with open(result_path, "r", encoding="utf-8") as rf:
                 content = rf.read()
             self.assertIn("WM", content)
-            self.assertIn("METADATA", content)
+            self.assertIn("AUDIT REPORT", content)
             self.assertIn("STATISTICS", content)
 
             os.unlink(result_path)
@@ -394,7 +393,7 @@ class TestDocumentAnonymizer(unittest.TestCase):
             "start": 7,
             "end": 23,
         }
-        options = {"format": "txt", "watermark": "WM", "audit": True, "include_stats": True}
+        options = {"format": "txt", "watermark": "WM"}
 
         try:
             with mock.patch.object(
@@ -402,7 +401,9 @@ class TestDocumentAnonymizer(unittest.TestCase):
                 'process_file',
                 wraps=self.anonymizer.document_processor.process_file
             ) as mocked_proc:
-                result_path = self.anonymizer.export_anonymized_document(temp_path, [entity], options)
+                result_path = self.anonymizer.export_anonymized_document(
+                    temp_path, [entity], options, audit=True
+                )
                 mocked_proc.assert_called_once_with(temp_path)
 
             self.assertTrue(os.path.exists(result_path))
