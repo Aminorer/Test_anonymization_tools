@@ -525,6 +525,11 @@ class TestDocumentAnonymizer(unittest.TestCase):
             if 'result_path' in locals() and os.path.exists(result_path):
                 os.unlink(result_path)
 
+    def test_export_anonymized_document_invalid_path(self):
+        """L'export échoue si le chemin fourni est invalide"""
+        with self.assertRaises(ValueError):
+            self.anonymizer.export_anonymized_document("", None, {"format": "txt"})
+
 class TestIntegration(unittest.TestCase):
     """Tests d'intégration"""
     

@@ -1759,6 +1759,14 @@ class DocumentAnonymizer:
         audit: bool = False,
     ) -> str:
         """Exporter un document anonymisé dans le format souhaité."""
+
+        if (
+            not isinstance(original_path, str)
+            or not original_path
+            or not os.path.exists(original_path)
+        ):
+            raise ValueError("original_path is required for export")
+
         options = options or {}
         output_format = options.get("format", "txt").lower()
 
