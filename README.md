@@ -14,7 +14,7 @@ Cette application Streamlit permet d'anonymiser automatiquement les documents ju
   - **IA** : Intelligent avec NER pour PERSON, ORG, LOC
 - 🎯 **Gestion d'entités** : Modification, groupement, validation
 - 📊 **Statistiques en temps réel** : Graphiques et métriques
-- 📤 **Export avancé** : DOCX et PDF avec filigrane et rapport d'audit (PDF nécessite `fpdf`)
+- 📤 **Export avancé** : DOCX et PDF avec options de filigrane, rapport d'audit et statistiques (désactivées par défaut ; PDF nécessite `fpdf`)
 - 🛡️ **Conformité RGPD** : Standards CNIL respectés
 
 ## 🚀 **Installation et Démarrage Rapide**
@@ -114,7 +114,7 @@ anonymizer-streamlit/
 - Navigation par extraits
 
 ### **5. Export Final**
-- **Options** : Filigrane personnalisable, rapport d'audit
+- **Options** : Filigrane personnalisable, rapport d'audit et statistiques détaillées (désactivés par défaut)
 - **Format** : DOCX ou PDF (l'export PDF nécessite le package `fpdf`)
 - **Téléchargement** : Direct depuis l'interface
 
