@@ -1814,6 +1814,7 @@ class DocumentAnonymizer:
             entities,
             metadata,
             audit=audit,
+            original_path=original_path,
         )
 
     def _create_anonymized_document(
@@ -2016,6 +2017,7 @@ class DocumentAnonymizer:
         entities: Optional[List[Dict]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         audit: bool = False,
+        original_path: Optional[str] = None,
     ) -> str:
         """Écrire le texte anonymisé dans le format choisi."""
 
@@ -2043,10 +2045,82 @@ class DocumentAnonymizer:
         elif output_format == "docx":
             if not DOCX_SUPPORT:
                 raise Exception("Export DOCX non supporté")
-            doc = Document()
-            if watermark:
-                doc.add_paragraph(str(watermark))
-            doc.add_paragraph(anonymized_text)
+            if not original_path:
+                raise ValueError("original_path is required for DOCX export")
+
+            doc = Document(original_path)
+
+            # Build replacement mapping from entity_mapping or entities
+            replacement_map: Dict[str, str] = {}
+            if self.entity_mapping:
+                for mapping in self.entity_mapping.values():
+                    replacement_map.update(mapping)
+            elif entities:
+                for ent in entities:
+                    if isinstance(ent, dict):
+                        value = ent.get("value")
+                        replacement = ent.get("replacement")
+                    else:
+                        value = getattr(ent, "value", None)
+                        replacement = getattr(ent, "replacement", None)
+                    if value and replacement:
+                        replacement_map[value] = replacement
+
+            def _replace_in_runs(runs):
+                for run in runs:
+                    for original, token in replacement_map.items():
+                        if original in run.text:
+                            run.text = run.text.replace(original, token)
+
+            # Replace in body paragraphs
+            for paragraph in doc.paragraphs:
+                _replace_in_runs(paragraph.runs)
+
+            # Replace in tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            _replace_in_runs(paragraph.runs)
+
+            # Headers and footers
+            for section in doc.sections:
+                if watermark:
+                    if section.header.paragraphs:
+                        section.header.paragraphs[0].text = str(watermark)
+                    else:
+                        section.header.add_paragraph(str(watermark))
+
+                for paragraph in section.header.paragraphs:
+                    _replace_in_runs(paragraph.runs)
+                for table in section.header.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                _replace_in_runs(paragraph.runs)
+
+                for paragraph in section.footer.paragraphs:
+                    _replace_in_runs(paragraph.runs)
+                for table in section.footer.tables:
+                    for row in table.rows:
+                        for cell in row.cells:
+                            for paragraph in cell.paragraphs:
+                                _replace_in_runs(paragraph.runs)
+
+            # Text boxes and shapes
+            try:
+                from docx.oxml.ns import nsmap
+
+                for text_elem in doc.part.element.xpath(
+                    './/w:txbxContent//w:t | .//w:drawing//w:t', namespaces=nsmap
+                ):
+                    for original, token in replacement_map.items():
+                        if original in text_elem.text:
+                            text_elem.text = text_elem.text.replace(original, token)
+            except Exception:
+                pass
+
+            # Append audit information if requested
             if audit:
                 if metadata:
                     doc.add_paragraph("=== AUDIT REPORT ===")
@@ -2056,6 +2130,8 @@ class DocumentAnonymizer:
                     doc.add_paragraph("=== STATISTICS ===")
                     for key, value in stats.items():
                         doc.add_paragraph(f"{key}: {value}")
+
+            output_path = options.get("output_path", original_path)
             doc.save(output_path)
             return output_path
 
