@@ -97,6 +97,16 @@ class EntityManager:
             # Issues manipulating entity lists are treated as deletion failures
             logging.error(f"Error deleting entity: {str(e)}")
             return False
+
+    def update_token_variants(self, token: str, variant: str) -> None:
+        """Mettre à jour toutes les entités partageant un même jeton."""
+        for entity in self.entities:
+            if entity.get("replacement") == token:
+                variants = set(entity.get("variants", []))
+                if variant not in variants:
+                    variants.add(variant)
+                    entity["variants"] = list(variants)
+                    entity["updated_at"] = datetime.now().isoformat()
     
     def get_entity_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
         """Récupérer une entité par son ID"""

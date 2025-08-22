@@ -41,6 +41,7 @@ import re
 import tempfile
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
@@ -52,6 +53,13 @@ from .utils import (
     get_name_normalization_titles,
     get_similarity_threshold,
 )
+try:
+    from rapidfuzz.distance import Levenshtein as RFLevenshtein
+except ImportError:  # pragma: no cover - rapidfuzz is optional at runtime
+    RFLevenshtein = None  # type: ignore
+from .bktree import BKTree
+if TYPE_CHECKING:  # pragma: no cover
+    from .entity_manager import EntityManager
 
 # === IMPORTS DOCUMENT ===
 try:
@@ -336,6 +344,11 @@ class RegexAnonymizer:
         )
         # Titres utilisés pour la normalisation des noms
         self.titles = titles if titles is not None else get_name_normalization_titles()
+        # Cache des valeurs normalisées pour éviter les recalculs
+        self.normalization_cache: Dict[str, str] = {}
+        # Structures de recherche par similarité (BK-tree)
+        self.bk_trees: Dict[str, BKTree] = {}
+        self.bktree_threshold = 100
         logging.info(
             f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns"
         )
@@ -356,6 +369,16 @@ class RegexAnonymizer:
                 "Similarity algorithm %s not available", self.algorithm
             )
         return 0.0
+
+    def _get_normalized_value(self, value: str, entity_type: str) -> str:
+        """Return cached normalized value for PERSON entities."""
+        if entity_type != "PERSON":
+            return value
+        cached = self.normalization_cache.get(value)
+        if cached is None:
+            cached = normalize_name(value, titles=self.titles)
+            self.normalization_cache[value] = cached
+        return cached
 
     def _load_terms_from_file(self, path: Path) -> List[str]:
         """Load terms from a file, one per line."""
@@ -458,7 +481,12 @@ class RegexAnonymizer:
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
 
-    def anonymize_text(self, text: str, entities: List[Entity]) -> Tuple[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+    def anonymize_text(
+        self,
+        text: str,
+        entities: List[Entity],
+        entity_manager: Optional["EntityManager"] = None,
+    ) -> Tuple[str, Dict[str, Dict[str, Dict[str, Any]]]]:
         """Anonymise le texte en remplaçant les entités détectées.
 
         Returns
@@ -473,38 +501,48 @@ class RegexAnonymizer:
 
         # Première passe : construire le mapping des entités
         replacements: List[Tuple[str, str]] = []
-        normalized_cache: Dict[str, Dict[str, str]] = {}
+        token_maps: Dict[str, Dict[str, str]] = {}
         for entity in entities:
             type_map = self.entity_mapping.setdefault(entity.type, {})
-            norm_map = normalized_cache.setdefault(entity.type, {})
+            norm_map = token_maps.setdefault(entity.type, {})
+            tree = self.bk_trees.get(entity.type)
 
-            norm_value = (
-                normalize_name(entity.value, titles=self.titles)
-                if entity.type == "PERSON"
-                else entity.value
-            )
-            canonical = (
-                normalize_name(entity.value, titles=self.titles)
-                if entity.type == "PERSON"
-                else entity.value
-            )
+            norm_value = self._get_normalized_value(entity.value, entity.type)
+            canonical = norm_value
 
             token: Optional[str] = None
             best_score = 0.0
             best_key: Optional[str] = None
-            for existing_key, existing_token in norm_map.items():
-                if norm_value in existing_key or existing_key in norm_value:
-                    score = self._similarity_score(norm_value, existing_key)
+            if len(norm_map) >= self.bktree_threshold and RFLevenshtein is not None:
+                if tree is None:
+                    tree = BKTree(RFLevenshtein.distance)
+                    for key in norm_map.keys():
+                        tree.add(key)
+                    self.bk_trees[entity.type] = tree
+                max_dist = max(1, int((1 - self.score_cutoff) * len(norm_value)))
+                candidates = tree.search(norm_value, max_dist)
+                for cand, dist in candidates:
+                    score = 1 - dist / max(len(norm_value), len(cand))
                     if score >= self.score_cutoff and score > best_score:
                         best_score = score
-                        token = existing_token
-                        best_key = existing_key
+                        token = norm_map[cand]
+                        best_key = cand
+            else:
+                for existing_key, existing_token in norm_map.items():
+                    if norm_value in existing_key or existing_key in norm_value:
+                        score = self._similarity_score(norm_value, existing_key)
+                        if score >= self.score_cutoff and score > best_score:
+                            best_score = score
+                            token = existing_token
+                            best_key = existing_key
 
             if token is None:
                 count = self.entity_counters.get(entity.type, 0) + 1
                 self.entity_counters[entity.type] = count
                 token = f"[{entity.type}_{count}]"
                 norm_map[norm_value] = token
+                if tree is not None:
+                    tree.add(norm_value)
                 type_map[norm_value] = {
                     "token": token,
                     "variants": {entity.value},
@@ -514,6 +552,8 @@ class RegexAnonymizer:
                 }
             else:
                 norm_map[norm_value] = token
+                if tree is not None:
+                    tree.add(norm_value)
                 if best_key and best_key in type_map:
                     entry = type_map[best_key]
                     if entity.value not in entry["variants"]:
@@ -524,6 +564,8 @@ class RegexAnonymizer:
                             "token": token,
                             "timestamp": datetime.now().isoformat(),
                         })
+                    if entity_manager:
+                        entity_manager.update_token_variants(token, entity.value)
                 else:
                     type_map[norm_value] = {
                         "token": token,
