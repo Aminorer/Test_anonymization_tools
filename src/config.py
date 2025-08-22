@@ -22,26 +22,26 @@ TEMP_FILE_RETENTION = 3600  # 1 heure en secondes
 # === PATTERNS REGEX OPTIMISÉS (SANS LOC COMME DEMANDÉ) ===
 ENTITY_PATTERNS = {
     # Données de contact
-    "EMAIL": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-    "PHONE": r'(?:\+33\s?|0)[1-9](?:[0-9\s.-]{8,})|(?:\+33\s?|0)[1-9](?:\s[0-9]{2}){4}|(?:\+33\s?|0)[1-9](?:\.[0-9]{2}){4}',
+    "EMAIL": r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b",  # RFC 5322
+    "PHONE": r"\b(?:\+33|0)(?:[1-5]|[67])(?:[ .-]?\d{2}){4}\b",  # Plan national ARCEP
     
     # Dates et temps
-    "DATE": r'\b(?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{2,4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})\b',
-    "TIME": r'\b(?:[01]?[0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?\b',
+    "DATE": r"\b(?:0?[1-9]|[12][0-9]|3[01])[-/](?:0?[1-9]|1[0-2])[-/](?:19|20)\d{2}\b",  # JJ/MM/AAAA
+    "TIME": r"\b(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?\b",
     
     # Adresses (plus précis que LOC supprimé)
-    "ADDRESS": r'\b\d+(?:\s+(?:bis|ter|quater))?\s+(?:rue|avenue|boulevard|place|square|impasse|allée|chemin|route|passage|villa|cité|quai|esplanade|parvis|cours|mail)\s+[A-Za-zÀ-ÿ\s\-\']+(?:\s+\d{5})?\s*[A-Za-zÀ-ÿ\s]*\b',
+    "ADDRESS": r"\b\d{1,4}\s?(?:bis|ter|quater)?\s+(?:rue|avenue|boulevard|place|square|impasse|allée|chemin|route|passage|villa|cité|quai|esplanade|parvis|cours|mail|faubourg)\s+[A-Za-zÀ-ÿ'\-\s]+,?\s\d{5}\s[A-Za-zÀ-ÿ'\-\s]+\b",  # Norme AFNOR NF Z 10-011
     
     # Données bancaires et financières
-    "IBAN": r'\b[A-Z]{2}\d{2}[A-Z0-9]{4}\d{7}([A-Z0-9]?){0,16}\b',
-    "CREDIT_CARD": r'\b(?:\d{4}[-\s]?){3}\d{4}\b',
-    "BIC": r'\b[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?\b',
+    "IBAN": r"\bFR\d{2}\s?\d{5}\s?\d{5}\s?[A-Z0-9]{11}\s?\d{2}\b",  # IBAN FR ISO 13616 (27 caractères)
+    "CREDIT_CARD": r"\b(?:\d{4}[- ]?){3}\d{4}\b",  # Carte bancaire 16 chiffres
+    "BIC": r"\b[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\b",  # Code BIC ISO 9362
     
     # Identifiants français
-    "SIREN": r'\b\d{3}\s?\d{3}\s?\d{3}\b',
-    "SIRET": r'\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b',
-    "SSN": r'\b[12]\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}\d{3}\d{2}\b',
-    "TVA_NUMBER": r'\bFR\s?\d{2}\s?\d{9}\b',
+    "SIREN": r"\b\d{3}\s?\d{3}\s?\d{3}\b",  # INSEE SIREN (9 chiffres)
+    "SIRET": r"\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b",  # INSEE SIRET (14 chiffres)
+    "SSN": r"\b[12]\d{2}(?:0[1-9]|1[0-2])(?:[0-9]{2}|2A|2B)\d{3}\d{3}\d{2}\b",  # NIR 15 chiffres + clé
+    "TVA_NUMBER": r"\bFR\d{2}\d{9}\b",  # TVA intracommunautaire
     
     # Codes et références
     "POSTAL_CODE": r'\b(?:0[1-9]|[1-8]\d|9[0-5])\d{3}\b',
@@ -65,27 +65,30 @@ ENTITY_PATTERNS = {
 # === PATTERNS FRANÇAIS AVANCÉS ===
 FRENCH_ENTITY_PATTERNS = {
     **ENTITY_PATTERNS,  # Inclure tous les patterns de base
-    
+
     # Noms avec titres de civilité français
-    "PERSON_WITH_TITLE": r'\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][a-zàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþß]+(?:\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][a-zàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþß]+)*',
-    
+    "PERSON_WITH_TITLE": r"\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*",  # Titres de civilité
+
     # Organisations françaises avec formes juridiques
-    "FRENCH_COMPANY": r'\b(?:SARL|SAS|SA|SNC|EURL|SASU|SCI|SELARL|SELCA|SELAS|Association|Société|Entreprise|Cabinet|Étude|Bureau|Groupe|Fondation|Institut|Centre|Établissement)\s+[A-ZÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞ][A-Za-zÀ-ÿ\s\-\'&]+',
-    
+    "FRENCH_COMPANY": r"\b(?:SARL|SAS|SA|SNC|EURL|SASU|SCI|SELARL|SELCA|SELAS|Association|Société|Entreprise|Cabinet|Étude|Bureau|Groupe|Fondation|Institut|Centre|Établissement)\s+[A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s\-'&]+",  # Formes juridiques françaises
+
     # Numéros français spécialisés
-    "FRENCH_SSN": r'\b[12]\s?\d{2}\s?(?:0[1-9]|1[0-2])\s?(?:0[1-9]|[12]\d|3[01])\s?\d{3}\s?\d{3}\s?\d{2}\b',
-    "INSEE_NUMBER": r'\b[12]\d{14}\b',
-    
+    "FRENCH_SSN": r"\b[12]\d{2}(?:0[1-9]|1[0-2])(?:[0-9]{2}|2A|2B)\d{3}\d{3}\d{2}\b",  # NIR 15 chiffres (INSEE)
+    "INSEE_NUMBER": r"\b[12]\d{14}\b",  # Numéro INSEE brut
+
     # Adresses françaises complètes
-    "FRENCH_ADDRESS": r'\b\d+(?:\s+(?:bis|ter|quater))?\s+(?:rue|avenue|boulevard|place|square|impasse|allée|chemin|route|passage|villa|cité|quai|esplanade|parvis|cours|mail|faubourg)\s+[A-Za-zÀ-ÿ\s\-\']+(?:\s+\d{5})?\s*[A-Za-zÀ-ÿ\s]*\b',
-    
+    "FRENCH_ADDRESS": r"\b\d{1,4}\s?(?:bis|ter|quater)?\s+(?:rue|avenue|boulevard|place|square|impasse|allée|chemin|route|passage|villa|cité|quai|esplanade|parvis|cours|mail|faubourg)\s+[A-Za-zÀ-ÿ'\-\s]+,?\s\d{5}\s[A-Za-zÀ-ÿ'\-\s]+\b",  # Norme adresse postale
+
     # Références administratives
-    "PREFECTURE_REF": r'\b\d{3}-\d{4}-\d{5}\b',
-    "CADASTRE_REF": r'\b\d{3}[A-Z]{2}\d{4}\b',
-    
+    "PREFECTURE_REF": r"\b\d{3}-\d{4}-\d{5}\b",  # Référence préfectorale
+    "CADASTRE_REF": r"\b\d{3}[A-Z]{2}\d{4}\b",  # Référence cadastrale
+
     # Numéros de téléphone français spécifiques
-    "FRENCH_MOBILE": r'\b(?:\+33\s?|0)[67](?:[0-9\s.-]{8})\b',
-    "FRENCH_LANDLINE": r'\b(?:\+33\s?|0)[1-5](?:[0-9\s.-]{8})\b'
+    "FRENCH_MOBILE": r"\b(?:\+33|0)[67](?:[ .-]?\d{2}){4}\b",  # Mobiles 06/07
+    "FRENCH_LANDLINE": r"\b(?:\+33|0)[1-5](?:[ .-]?\d{2}){4}\b",  # Fixes 01-05
+
+    # Références juridiques
+    "LEGAL_REFERENCE": r"\b[Aa]rt(?:icle)?\.?\s+[LDR]\d+(?:-\d+)*\s+du\s+Code\s+[A-Za-zÀ-ÿ\s]+\b"  # Articles de loi français
 }
 
 # === COULEURS POUR LES TYPES D'ENTITÉS ===
