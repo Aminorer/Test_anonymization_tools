@@ -33,6 +33,7 @@ from .anonymizer import (
 )
 
 from .entity_manager import EntityManager
+from .legal_normalizer import LegalEntityNormalizer
 
 from .config import (
     ENTITY_PATTERNS,
@@ -57,6 +58,7 @@ __all__ = [
     "DocumentProcessor",
     "EntityManager",
     "Entity",
+    "LegalEntityNormalizer",
     
     # Configuration
     "ENTITY_PATTERNS",
