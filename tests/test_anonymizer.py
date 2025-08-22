@@ -304,6 +304,12 @@ class TestDocumentAnonymizer(unittest.TestCase):
     
     def setUp(self):
         self.anonymizer = DocumentAnonymizer()
+
+    def test_preprocess_text_normalizes_quotes(self):
+        """Vérifie la normalisation des guillemets typographiques"""
+        text = "“Bonjour” et ‘merci’"
+        processed = self.anonymizer._preprocess_text(text)
+        self.assertEqual(processed, '"Bonjour" et \'merci\'')
     
     def test_create_anonymized_document(self):
         """Test de création de document anonymisé avec options"""
