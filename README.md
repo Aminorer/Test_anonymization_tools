@@ -157,5 +157,16 @@ Modifiez `src/config.py` pour :
 - Modifier les couleurs des types d'entités
 - Personnaliser les remplacements par défaut
 - Créer des préréglages métier
+ 
+## 🧪 Benchmark
 
-### **
+Un corpus d'exemples annotés est disponible dans `data/benchmark`. Pour
+évaluer automatiquement la qualité de l'anonymiseur sur ce corpus,
+exécutez :
+
+```bash
+python benchmark.py --dataset data/benchmark --output rapport.csv
+```
+
+Le script génère un fichier CSV contenant précision, rappel et F1 pour
+chaque type d'entité détecté.
