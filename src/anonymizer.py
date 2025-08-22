@@ -2785,4 +2785,77 @@ class DocumentAnonymizer:
         len1 = entity1.end - entity1.start
         len2 = entity2.end - entity2.start
         return entity1 if len1 >= len2 else entity2
+
+
+def evaluate(dataset_path: str):
+    """Évalue l'anonymiseur sur un corpus annoté.
+
+    Parameters
+    ----------
+    dataset_path : str
+        Chemin vers un dossier contenant des fichiers JSON avec
+        les clés ``tokens`` et ``labels``.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Tableau des métriques précision, rappel et F1 pour chaque entité.
+    """
+
+    from pathlib import Path
+    import json
+    import pandas as pd
+    from sklearn.metrics import precision_recall_fscore_support
+
+    dataset_dir = Path(dataset_path)
+    if not dataset_dir.exists():
+        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+
+    anonymizer = RegexAnonymizer(use_french_patterns=True)
+
+    all_true: List[str] = []
+    all_pred: List[str] = []
+
+    for file_path in dataset_dir.glob("*.json"):
+        with open(file_path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+
+        tokens = doc.get("tokens", [])
+        true_labels = doc.get("labels", [])
+        text = " ".join(tokens)
+
+        entities = anonymizer.detect_entities(text)
+        pred_labels = ["O"] * len(tokens)
+
+        # Calcul des offsets caractères pour chaque token
+        offsets = []
+        pos = 0
+        for tok in tokens:
+            start = pos
+            end = pos + len(tok)
+            offsets.append((start, end))
+            pos = end + 1  # espace
+
+        for ent in entities:
+            for idx, (start, end) in enumerate(offsets):
+                if not (ent.end <= start or ent.start >= end):
+                    pred_labels[idx] = ent.type
+
+        all_true.extend(true_labels)
+        all_pred.extend(pred_labels)
+
+    labels = sorted({lbl for lbl in all_true if lbl != "O"})
+    precision, recall, f1, support = precision_recall_fscore_support(
+        all_true, all_pred, labels=labels, average=None, zero_division=0
+    )
+
+    return pd.DataFrame(
+        {
+            "entity": labels,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "support": support,
+        }
+    )
     
