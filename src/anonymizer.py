@@ -2054,8 +2054,8 @@ class DocumentAnonymizer:
             'œ': 'oe', 'Œ': 'OE',
             'æ': 'ae', 'Æ': 'AE',
             '«': '"', '»': '"',
-            ''': "'", ''': "'",
-            '"': '"', '"': '"'
+            '“': '"', '”': '"',
+            '‘': "'", '’': "'",
         }
         
         for old, new in replacements.items():
