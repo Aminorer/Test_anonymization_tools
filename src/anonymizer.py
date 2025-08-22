@@ -185,6 +185,41 @@ DEFAULT_REPLACEMENTS = {
     "DATE": "[DATE]"
 }
 
+# === FILTRES FRANÇAIS ===
+try:
+    from spacy.lang.fr.stop_words import STOP_WORDS as FRENCH_STOP_WORDS
+except Exception:  # pragma: no cover - fallback si SpaCy indisponible
+    FRENCH_STOP_WORDS = {
+        "le", "la", "les", "de", "des", "du", "un", "une",
+        "et", "en", "dans", "que", "qui", "pour", "par"
+    }
+
+FRENCH_TITLES = {
+    "maître", "maitre", "m.", "mr", "mme", "mlle", "dr", "me",
+    "docteur", "professeur"
+}
+
+MIN_ENTITY_LENGTH = {
+    "PERSON": 2,
+    "ORG": 2,
+    "LOC": 2,
+}
+
+DEFAULT_FILTER_CONFIG = {
+    "stopwords": True,
+    "min_length": True,
+    "capitalization": True,
+    "title_check": True,
+    "require_title": False,
+}
+
+
+def get_preceding_token(text: str, start: int) -> str:
+    """Récupérer le mot précédent une position donnée."""
+    before = text[:start].rstrip()
+    match = re.search(r"(\w+)$", before)
+    return match.group(1) if match else ""
+
 # === PATTERNS FRANÇAIS AMÉLIORÉS ===
 FRENCH_ENTITY_PATTERNS = {
     **ENTITY_PATTERNS,
@@ -910,15 +945,25 @@ class EntityValidator:
 
 class AIAnonymizer:
     """Anonymiseur IA avec NER multi-modèles et gestion des conflits Streamlit"""
-    
-    def __init__(self, model_config: dict = None, prefer_french: bool = True):
+
+    def __init__(
+        self,
+        model_config: dict = None,
+        prefer_french: bool = True,
+        filter_config: Optional[Dict[str, bool]] = None,
+    ):
         self.model_config = model_config or self._get_best_model(prefer_french)
         self.nlp_pipeline = None
         self.spacy_nlp = None
         self.regex_anonymizer = RegexAnonymizer(use_french_patterns=True)
         self.prefer_french = prefer_french
         self.model_loaded = False
-        
+
+        # Configuration des filtres
+        self.filter_config = DEFAULT_FILTER_CONFIG.copy()
+        if filter_config:
+            self.filter_config.update(filter_config)
+
         # Initialiser le modèle en mode thread-safe
         self._initialize_model_safe()
     
@@ -1266,27 +1311,50 @@ class AIAnonymizer:
     def _post_process_entities(self, entities: List[Entity], text: str) -> List[Entity]:
         """Post-traitement avec optimisations françaises"""
         processed = []
-        
+
         for entity in entities:
             # Validation de base
             if not self._is_valid_entity(entity, text):
                 continue
-            
+
             # Nettoyage de la valeur
             entity.value = self._clean_entity_value(entity.value)
-            
+
             # Amélioration du contexte
             if not entity.context:
                 entity.context = self._extract_context(text, entity.start, entity.end)
-            
+
             # Classification fine française
             entity.type = self._refine_french_classification(entity, text)
-            
+
+            # Filtres configurables
+            cfg = self.filter_config
+
+            if cfg.get("min_length", True):
+                min_len = MIN_ENTITY_LENGTH.get(entity.type, 1)
+                if len(entity.value) < min_len:
+                    continue
+
+            if cfg.get("stopwords", True) and entity.type == "PERSON":
+                if entity.value.lower() in FRENCH_STOP_WORDS:
+                    continue
+
+            if cfg.get("capitalization", True) and entity.type == "PERSON":
+                if not entity.value[:1].isupper():
+                    continue
+
+            if cfg.get("title_check", True) and entity.type == "PERSON":
+                preceding = get_preceding_token(text, entity.start)
+                if preceding.lower() in FRENCH_TITLES:
+                    pass
+                elif cfg.get("require_title", False):
+                    continue
+
             processed.append(entity)
-        
+
         # Résolution des conflits
         processed = self._resolve_entity_conflicts(processed)
-        
+
         return processed
     
     def _is_valid_entity(self, entity: Entity, text: str) -> bool:
@@ -1612,14 +1680,26 @@ class DocumentProcessor:
 
 class DocumentAnonymizer:
     """Anonymiseur principal avec IA fonctionnelle et optimisations Streamlit"""
-    
-    def __init__(self, prefer_french: bool = True, use_spacy: bool = True):
+
+    def __init__(
+        self,
+        prefer_french: bool = True,
+        use_spacy: bool = True,
+        filter_config: Optional[Dict[str, bool]] = None,
+    ):
         self.regex_anonymizer = RegexAnonymizer(use_french_patterns=True)
-        
+
+        # Configuration des filtres
+        self.filter_config = DEFAULT_FILTER_CONFIG.copy()
+        if filter_config:
+            self.filter_config.update(filter_config)
+
         # Initialisation IA conditionnelle
         if AI_SUPPORT or SPACY_SUPPORT:
             try:
-                self.ai_anonymizer = AIAnonymizer(prefer_french=prefer_french)
+                self.ai_anonymizer = AIAnonymizer(
+                    prefer_french=prefer_french, filter_config=self.filter_config
+                )
                 logging.info("AIAnonymizer initialisé avec succès")
             except (RuntimeError, OSError, ValueError) as e:
                 self.ai_anonymizer = None
@@ -1627,7 +1707,7 @@ class DocumentAnonymizer:
         else:
             self.ai_anonymizer = None
             logging.info("Mode regex uniquement (IA non disponible)")
-        
+
         self.document_processor = DocumentProcessor()
         self.temp_dir = tempfile.mkdtemp()
         self.prefer_french = prefer_french
@@ -1661,11 +1741,18 @@ class DocumentAnonymizer:
         mode: str = "ai",
         confidence: float = 0.7,
         audit: bool = False,
+        filter_config: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, Any]:
         """Traitement principal avec option de rapport d'audit"""
         import time
         start_time = time.time()
-        
+
+        original_config = self.filter_config.copy()
+        if filter_config:
+            self.filter_config.update(filter_config)
+            if self.ai_anonymizer:
+                self.ai_anonymizer.filter_config = self.filter_config
+
         try:
             # Validation des paramètres
             if mode not in ["regex", "ai"]:
@@ -1764,6 +1851,11 @@ class DocumentAnonymizer:
                 "error": str(e),
                 "processing_time": processing_time
             }
+        finally:
+            # Restaurer la configuration initiale
+            self.filter_config = original_config
+            if self.ai_anonymizer:
+                self.ai_anonymizer.filter_config = self.filter_config
 
     def _generate_processing_stats(self, entities: List[Entity], text: str, processing_time: float) -> Dict[str, Any]:
         """Générer des statistiques complètes de traitement"""
@@ -2335,27 +2427,50 @@ class DocumentAnonymizer:
     def _post_process_entities(self, entities: List[Entity], text: str) -> List[Entity]:
         """Post-traitement avec optimisations françaises"""
         processed = []
-        
+
         for entity in entities:
             # Validation de base
             if not self._is_valid_entity(entity, text):
                 continue
-            
+
             # Nettoyage de la valeur
             entity.value = self._clean_entity_value(entity.value)
-            
+
             # Amélioration du contexte
             if not entity.context:
                 entity.context = self._extract_context(text, entity.start, entity.end)
-            
+
             # Classification fine française
             entity.type = self._refine_french_classification(entity, text)
-            
+
+            # Filtres configurables
+            cfg = self.filter_config
+
+            if cfg.get("min_length", True):
+                min_len = MIN_ENTITY_LENGTH.get(entity.type, 1)
+                if len(entity.value) < min_len:
+                    continue
+
+            if cfg.get("stopwords", True) and entity.type == "PERSON":
+                if entity.value.lower() in FRENCH_STOP_WORDS:
+                    continue
+
+            if cfg.get("capitalization", True) and entity.type == "PERSON":
+                if not entity.value[:1].isupper():
+                    continue
+
+            if cfg.get("title_check", True) and entity.type == "PERSON":
+                preceding = get_preceding_token(text, entity.start)
+                if preceding.lower() in FRENCH_TITLES:
+                    pass
+                elif cfg.get("require_title", False):
+                    continue
+
             processed.append(entity)
-        
+
         # Résolution des conflits
         processed = self._resolve_entity_conflicts(processed)
-        
+
         return processed
     
     def _is_valid_entity(self, entity: Entity, text: str) -> bool:
