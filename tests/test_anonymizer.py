@@ -60,12 +60,13 @@ class TestRegexAnonymizer(unittest.TestCase):
         """Test d'anonymisation complète"""
         text = "Contact: john@example.com, tél: 01 23 45 67 89"
         entities = self.anonymizer.detect_entities(text)
-        anonymized = self.anonymizer.anonymize_text(text, entities)
-        
+        anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
+
         self.assertNotIn("john@example.com", anonymized)
         self.assertNotIn("01 23 45 67 89", anonymized)
-        self.assertIn("[EMAIL]", anonymized)
-        self.assertIn("[PHONE]", anonymized)
+        self.assertIn("[EMAIL_1]", anonymized)
+        self.assertIn("[PHONE_1]", anonymized)
+        self.assertEqual(mapping["EMAIL"]["john@example.com"], "[EMAIL_1]")
 
 class TestEntityManager(unittest.TestCase):
     """Tests pour le gestionnaire d'entités"""
@@ -408,7 +409,7 @@ class TestDocumentAnonymizer(unittest.TestCase):
             with open(result_path, 'r', encoding='utf-8') as rf:
                 content = rf.read()
 
-            self.assertIn('[EMAIL]', content)
+            self.assertIn('[EMAIL_1]', content)
             self.assertIn('WM', content)
             self.assertIn('AUDIT REPORT', content)
             self.assertIn('total_entities', content)
@@ -435,7 +436,7 @@ class TestDocumentAnonymizer(unittest.TestCase):
 
             with open(result_path, 'r', encoding='utf-8') as rf:
                 content = rf.read()
-            self.assertIn('[EMAIL]', content)
+            self.assertIn('[EMAIL_1]', content)
         finally:
             os.unlink(temp_path)
             if 'result_path' in locals() and os.path.exists(result_path):
@@ -487,14 +488,15 @@ class TestIntegration(unittest.TestCase):
                 entity_manager.add_entity_to_group(phone_group, entity["id"])
         
         # 7. Anonymiser le texte
-        anonymized = anonymizer.anonymize_text(text, entities)
-        
+        anonymized, mapping = anonymizer.anonymize_text(text, entities)
+
         # 8. Vérifications finales
         self.assertNotIn("jean.dupont@email.com", anonymized)
         self.assertNotIn("marie.martin@example.fr", anonymized)
         self.assertNotIn("01 23 45 67 89", anonymized)
-        self.assertIn("[EMAIL]", anonymized)
-        self.assertIn("[PHONE]", anonymized)
+        self.assertIn("[EMAIL_1]", anonymized)
+        self.assertIn("[EMAIL_2]", anonymized)
+        self.assertIn("[PHONE_1]", anonymized)
         
         # 9. Statistiques
         stats = entity_manager.get_statistics()

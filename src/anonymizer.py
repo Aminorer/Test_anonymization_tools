@@ -263,6 +263,10 @@ class RegexAnonymizer:
         self.patterns = FRENCH_ENTITY_PATTERNS if use_french_patterns else ENTITY_PATTERNS
         self.replacements = DEFAULT_REPLACEMENTS
         self.use_french_patterns = use_french_patterns
+        # Mapping des valeurs d'entités vers leurs jetons anonymisés
+        self.entity_mapping: Dict[str, Dict[str, str]] = {}
+        # Compteurs de jetons générés par type d'entité
+        self.entity_counters: Dict[str, int] = {}
         logging.info(f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns")
     
     def detect_entities(self, text: str) -> List[Entity]:
@@ -307,12 +311,34 @@ class RegexAnonymizer:
         logging.info(f"RegexAnonymizer: {len(entities)} entités détectées")
         return entities
 
-    def anonymize_text(self, text: str, entities: List[Entity]) -> str:
-        """Anonymise le texte en remplaçant les entités détectées"""
+    def anonymize_text(self, text: str, entities: List[Entity]) -> Tuple[str, Dict[str, Dict[str, str]]]:
+        """Anonymise le texte en remplaçant les entités détectées.
+
+        Returns
+        -------
+        Tuple[str, Dict[str, Dict[str, str]]]
+            Le texte anonymisé et le mapping des valeurs originales vers les
+            jetons générés par type d'entité.
+        """
+        # Réinitialiser le mapping et les compteurs pour chaque nouveau document
+        self.entity_mapping = {}
+        self.entity_counters = {}
+
         for entity in sorted(entities, key=lambda e: e.start, reverse=True):
-            replacement = entity.replacement if entity.replacement else f"[{entity.type}]"
-            text = text[:entity.start] + replacement + text[entity.end:]
-        return text
+            type_map = self.entity_mapping.setdefault(entity.type, {})
+
+            if entity.value in type_map:
+                token = type_map[entity.value]
+            else:
+                count = self.entity_counters.get(entity.type, 0) + 1
+                self.entity_counters[entity.type] = count
+                token = f"[{entity.type}_{count}]"
+                type_map[entity.value] = token
+
+            entity.replacement = token
+            text = text[:entity.start] + token + text[entity.end:]
+
+        return text, self.entity_mapping
 
     def _clean_entities(self, entities: List[Entity]) -> List[Entity]:
         """Nettoyage et validation finale des entités détectées"""
@@ -1600,7 +1626,7 @@ class DocumentAnonymizer:
             entities = self._post_process_entities(entities, text)
             
             # Anonymisation
-            anonymized_text = self.regex_anonymizer.anonymize_text(text, entities)
+            anonymized_text, entity_mapping = self.regex_anonymizer.anonymize_text(text, entities)
             
             # Validation de l'anonymisation
             validation_result = self._validate_anonymization(text, anonymized_text, entities)
@@ -1625,6 +1651,7 @@ class DocumentAnonymizer:
                 "text": text,
                 "anonymized_text": anonymized_text,
                 "anonymized_path": anonymized_path,
+                "entity_mapping": entity_mapping,
                 "metadata": {**metadata, **stats},
                 "mode": mode,
                 "confidence": confidence,
@@ -1735,7 +1762,7 @@ class DocumentAnonymizer:
             entity_objects = detected
             entities = [asdict(e) for e in detected]
 
-        anonymized_text = self.regex_anonymizer.anonymize_text(text, entity_objects)
+        anonymized_text, _ = self.regex_anonymizer.anonymize_text(text, entity_objects)
 
         stats = None
         if options.get("include_stats"):
