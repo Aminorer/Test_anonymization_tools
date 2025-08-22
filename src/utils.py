@@ -274,19 +274,32 @@ def import_entities_from_json(json_path: str) -> List[Dict]:
         logging.error(f"Error importing entities: {str(e)}")
         return []
 
-def serialize_entity_mapping(mapping: Dict[str, Dict[str, str]], output_path: Optional[str] = None) -> Optional[str]:
+def serialize_entity_mapping(
+    mapping: Dict[str, Dict[str, Dict[str, Any]]],
+    output_path: Optional[str] = None,
+) -> Optional[str]:
     """Sérialiser un mapping d'entités en JSON.
 
     Parameters
     ----------
-    mapping: Dict[str, Dict[str, str]]
+    mapping: Dict[str, Dict[str, Dict[str, Any]]]
         Mapping des valeurs originales vers leurs remplacements.
     output_path: Optional[str]
         Chemin de sauvegarde. Si fourni, le JSON est écrit sur disque et le
         chemin est retourné. Sinon, la chaîne JSON est retournée.
     """
     try:
-        mapping_json = json.dumps(mapping, ensure_ascii=False, indent=2)
+        serializable: Dict[str, Dict[str, Any]] = {}
+        for ent_type, entities in mapping.items():
+            serializable[ent_type] = {}
+            for norm_value, info in entities.items():
+                serializable[ent_type][norm_value] = {
+                    "token": info.get("token"),
+                    "variants": sorted(list(info.get("variants", []))),
+                    "canonical": info.get("canonical"),
+                }
+
+        mapping_json = json.dumps(serializable, ensure_ascii=False, indent=2)
         if output_path:
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(mapping_json)
