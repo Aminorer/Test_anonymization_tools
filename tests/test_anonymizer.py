@@ -73,6 +73,26 @@ class TestRegexAnonymizer(unittest.TestCase):
         self.assertIn("[PHONE_1]", anonymized)
         self.assertEqual(mapping["EMAIL"]["john@example.com"], "[EMAIL_1]")
 
+    def test_token_reuse_and_counter_reset(self):
+        """Les tokens sont réutilisés et les compteurs se réinitialisent"""
+        text = "Emails: a@example.com and a@example.com"
+        entities = [
+            Entity(id="1", type="EMAIL", value="a@example.com", start=8, end=21),
+            Entity(id="2", type="EMAIL", value="a@example.com", start=26, end=39),
+        ]
+        anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
+        token = mapping["EMAIL"]["a@example.com"]
+        self.assertEqual(token, "[EMAIL_1]")
+        self.assertEqual(anonymized.count(token), 2)
+
+        text2 = "Email: b@example.com"
+        entities2 = [
+            Entity(id="1", type="EMAIL", value="b@example.com", start=7, end=20)
+        ]
+        anonymized2, mapping2 = self.anonymizer.anonymize_text(text2, entities2)
+        token2 = mapping2["EMAIL"]["b@example.com"]
+        self.assertEqual(token2, "[EMAIL_1]")
+
 class TestEntityManager(unittest.TestCase):
     """Tests pour le gestionnaire d'entités"""
     
@@ -401,8 +421,8 @@ class TestDocumentAnonymizer(unittest.TestCase):
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0].type, "EMAIL")
 
-    def test_process_document_returns_mapping(self):
-        """Vérifie que le mapping est conservé et utilisé"""
+    def test_process_document_returns_mapping_and_counters(self):
+        """Vérifie que le mapping et les compteurs sont conservés"""
         text = "Contact: test@example.com"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write(text)
@@ -411,9 +431,12 @@ class TestDocumentAnonymizer(unittest.TestCase):
         try:
             result = self.anonymizer.process_document(temp_path, mode="regex", audit=True)
             mapping = result.get("entity_mapping", {})
+            counters = result.get("entity_counters", {})
             self.assertEqual(mapping, self.anonymizer.entity_mapping)
+            self.assertEqual(counters, self.anonymizer.entity_counters)
             token = mapping["EMAIL"]["test@example.com"]
             self.assertIn(token, result["anonymized_text"])
+            self.assertEqual(counters.get("EMAIL"), 1)
 
             with open(result["anonymized_path"], "r", encoding="utf-8") as rf:
                 content = rf.read()
