@@ -358,39 +358,40 @@ class RegexAnonymizer:
             # Vérification et nettoyage de la valeur
             if not entity.value or len(entity.value.strip()) < 2:
                 continue
-                
+
             # Normalisation des espaces
             entity.value = re.sub(r'\s+', ' ', entity.value.strip())
-            
+
             # Validation selon le type
             if entity.type == "EMAIL":
                 if not "@" in entity.value or not "." in entity.value.split("@")[1]:
+                    logging.warning(f"Email invalide ignoré: {entity.value}")
                     continue
             elif entity.type == "PHONE":
-                if not self._validate_phone_number(entity.value):
+                if not EntityValidator.validate_phone_fr(entity.value):
+                    logging.warning(f"Téléphone invalide ignoré: {entity.value}")
                     continue
             elif entity.type == "IBAN":
-                if not self._validate_iban(entity.value):
+                if not EntityValidator.validate_iban_fr(entity.value):
+                    logging.warning(f"IBAN invalide ignoré: {entity.value}")
                     continue
-            
+            elif entity.type == "SIREN":
+                if not EntityValidator.validate_siren(entity.value):
+                    logging.warning(f"SIREN invalide ignoré: {entity.value}")
+                    continue
+            elif entity.type == "SIRET":
+                if not EntityValidator.validate_siret(entity.value):
+                    logging.warning(f"SIRET invalide ignoré: {entity.value}")
+                    continue
+            elif entity.type == "SSN":
+                if not EntityValidator.validate_ssn_fr(entity.value):
+                    logging.warning(f"SSN invalide ignoré: {entity.value}")
+                    continue
+
             # Ajout si valide
             cleaned.append(entity)
-            
+
         return cleaned
-        
-    def _validate_phone_number(self, phone: str) -> bool:
-        """Validation des numéros de téléphone"""
-        # Nettoyer le numéro
-        digits = re.sub(r'\D', '', phone)
-        # Vérifier la longueur et le format
-        return 8 <= len(digits) <= 15
-        
-    def _validate_iban(self, iban: str) -> bool:
-        """Validation basique d'IBAN"""
-        # Supprimer les espaces
-        clean_iban = iban.replace(' ', '')
-        # Vérifier longueur minimale et format
-        return len(clean_iban) >= 15 and bool(re.match(r'^[A-Z]{2}\d{2}[A-Z0-9]+$', clean_iban))
     
     def _normalize_entity_type(self, entity_type: str) -> str:
         """Normaliser les types d'entités français"""
@@ -417,16 +418,36 @@ class RegexAnonymizer:
         
         # Filtres spécifiques par type
         if entity_type == "EMAIL":
-            return "@" in value and "." in value.split("@")[-1]
+            valid = "@" in value and "." in value.split("@")[-1]
+            if not valid:
+                logging.warning(f"Match email invalide ignoré: {value}")
+            return valid
         elif entity_type == "PHONE":
-            digits = re.sub(r'\D', '', value)
-            return 8 <= len(digits) <= 15
+            valid = EntityValidator.validate_phone_fr(value)
+            if not valid:
+                logging.warning(f"Match téléphone invalide ignoré: {value}")
+            return valid
         elif entity_type == "IBAN":
-            return len(value.replace(' ', '')) >= 15
-        elif entity_type in ["SIREN", "SIRET"]:
-            digits = re.sub(r'\D', '', value)
-            return len(digits) in [9, 14]  # SIREN: 9, SIRET: 14
-        
+            valid = EntityValidator.validate_iban_fr(value)
+            if not valid:
+                logging.warning(f"Match IBAN invalide ignoré: {value}")
+            return valid
+        elif entity_type == "SIREN":
+            valid = EntityValidator.validate_siren(value)
+            if not valid:
+                logging.warning(f"Match SIREN invalide ignoré: {value}")
+            return valid
+        elif entity_type == "SIRET":
+            valid = EntityValidator.validate_siret(value)
+            if not valid:
+                logging.warning(f"Match SIRET invalide ignoré: {value}")
+            return valid
+        elif entity_type == "SSN":
+            valid = EntityValidator.validate_ssn_fr(value)
+            if not valid:
+                logging.warning(f"Match SSN invalide ignoré: {value}")
+            return valid
+
         return True
     
     def _extract_context(self, text: str, start: int, end: int, context_length: int = 80) -> str:
@@ -788,18 +809,59 @@ class EntityValidator:
     @staticmethod
     def validate_phone_fr(phone: str) -> bool:
         """Validation téléphone français"""
-        # Nettoyer le numéro
         digits = re.sub(r'\D', '', phone)
-        
-        # Formats français acceptés
-        if len(digits) == 10 and digits.startswith(('01', '02', '03', '04', '05', '06', '07', '08', '09')):
-            return True
-        elif len(digits) == 11 and digits.startswith('33') and digits[2] in '123456789':
-            return True
-        elif len(digits) == 12 and digits.startswith('0033'):
-            return True
-        
-        return False
+
+        # Convertir les formats internationaux en format national
+        if digits.startswith('0033'):
+            digits = '0' + digits[4:]
+        elif digits.startswith('33'):
+            digits = '0' + digits[2:]
+
+        # Doit être au format national 10 chiffres
+        if len(digits) != 10 or not digits.startswith('0'):
+            return False
+
+        # Préfixes autorisés: 01-05 (fixe) et 06-07 (mobile)
+        return digits[1] in '1234567'
+
+    @staticmethod
+    def validate_ssn_fr(ssn: str) -> bool:
+        """Validation du NIR français (15 chiffres)"""
+        value = ssn.replace(' ', '').upper()
+        if not re.match(r'^[12]\d{2}(0[1-9]|1[0-2])(?:\d{2}|2A|2B)\d{3}\d{3}\d{2}$', value):
+            return False
+
+        nir = value[:-2]
+        key = int(value[-2:])
+        nir_numeric = nir.replace('2A', '19').replace('2B', '18')
+        try:
+            expected_key = 97 - (int(nir_numeric) % 97)
+        except ValueError:
+            return False
+        return expected_key == key
+
+    @staticmethod
+    def validate_iban_fr(iban: str) -> bool:
+        """Validation de l'IBAN français (mod-97)"""
+        clean = re.sub(r'\s+', '', iban).upper()
+        if not clean.startswith('FR') or len(clean) != 27:
+            return False
+
+        # Réarranger et convertir en nombre
+        rearranged = clean[4:] + clean[:4]
+        converted = ''
+        for ch in rearranged:
+            if ch.isdigit():
+                converted += ch
+            elif 'A' <= ch <= 'Z':
+                converted += str(ord(ch) - 55)
+            else:
+                return False
+
+        try:
+            return int(converted) % 97 == 1
+        except ValueError:
+            return False
     
     @staticmethod
     def validate_siren(siren: str) -> bool:
