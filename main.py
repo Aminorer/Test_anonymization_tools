@@ -1442,8 +1442,20 @@ def display_export_section_advanced():
             }[x]
         )
         
-        # Bouton d'export
-        if st.button("📥 Exporter le document", type="primary"):
+        # Vérifier la présence du fichier original avant export
+        original_path = st.session_state.get("original_file_path")
+        has_original = isinstance(original_path, str) and original_path.strip()
+
+        if not has_original:
+            st.warning("Aucun document original trouvé. Veuillez téléverser ou réanalyser un document avant l'export.")
+
+        export_clicked = st.button(
+            "📥 Exporter le document",
+            type="primary",
+            disabled=not has_original
+        )
+
+        if export_clicked and has_original:
             try:
                 # Préparer les options d'export
                 export_options = {
@@ -1451,11 +1463,11 @@ def display_export_section_advanced():
                     "watermark": watermark_text if add_watermark else None,
                 }
                 audit_flag = generate_report or include_stats
-                
+
                 # Exporter en utilisant le fichier original
                 anonymizer = get_anonymizer()
                 result = anonymizer.export_anonymized_document(
-                    st.session_state.get("original_file_path"),
+                    original_path,
                     st.session_state.entities,
                     export_options,
                     audit=audit_flag,
@@ -1466,7 +1478,7 @@ def display_export_section_advanced():
                     with open(result, "rb") as f:
                         file_content = f.read()
 
-                    file_name = f"anonymized_{Path(st.session_state.get('original_file_path')).stem}.{export_format}"
+                    file_name = f"anonymized_{Path(original_path).stem}.{export_format}"
                     st.download_button(
                         "⬇️ Télécharger le document anonymisé",
                         file_content,
@@ -1481,7 +1493,6 @@ def display_export_section_advanced():
                 st.error(f"❌ Erreur: {str(e)}")
             finally:
                 # Nettoyer le fichier original après l'export
-                original_path = st.session_state.get("original_file_path")
                 if original_path and os.path.exists(original_path):
                     try:
                         os.unlink(original_path)
