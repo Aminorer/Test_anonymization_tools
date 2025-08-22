@@ -607,6 +607,30 @@ class TestDocumentAnonymizer(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.anonymizer.export_anonymized_document("", None, {"format": "txt"})
 
+    def test_process_document_empty_file(self):
+        """Le traitement d'un fichier vide renvoie une erreur explicite"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            temp_path = f.name
+        try:
+            result = self.anonymizer.process_document(temp_path, mode="regex")
+            self.assertEqual(result["status"], "error")
+            self.assertIn("Aucun texte", result["error"])
+        finally:
+            os.unlink(temp_path)
+
+    def test_extract_text_exotic_encoding(self):
+        """Extraction correcte d'un fichier encodé en latin-1"""
+        content = "Café à Paris"
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".txt", delete=False) as f:
+            f.write(content.encode("latin-1"))
+            path = f.name
+        try:
+            text, meta = self.anonymizer.document_processor.extract_text_from_txt(path)
+            self.assertEqual(text.strip(), content)
+            self.assertEqual(meta["encoding"], "latin1")
+        finally:
+            os.unlink(path)
+
 class TestIntegration(unittest.TestCase):
     """Tests d'intégration"""
     
