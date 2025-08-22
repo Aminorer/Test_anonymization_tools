@@ -306,27 +306,41 @@ class TestDocumentAnonymizer(unittest.TestCase):
         self.anonymizer = DocumentAnonymizer()
     
     def test_create_anonymized_document(self):
-        """Test de création de document anonymisé"""
+        """Test de création de document anonymisé avec options"""
         test_text = "Email: test@example.com, Phone: 01 23 45 67 89"
         metadata = {"format": "test", "pages": 1}
-        
-        # Créer un fichier temporaire
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        entities = [
+            Entity(id="1", type="EMAIL", value="test@example.com", start=7, end=23),
+            Entity(id="2", type="PHONE", value="01 23 45 67 89", start=31, end=45),
+        ]
+        anonymized = test_text.replace("test@example.com", "[EMAIL]").replace(
+            "01 23 45 67 89", "[PHONE]"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             f.write(test_text)
             temp_path = f.name
-        
+
         try:
             result_path = self.anonymizer._create_anonymized_document(
-                temp_path, 
-                test_text.replace("test@example.com", "[EMAIL]").replace("01 23 45 67 89", "[PHONE]"),
-                metadata
+                temp_path,
+                anonymized,
+                metadata,
+                entities,
+                export_format="txt",
+                watermark="WM",
+                include_report=True,
+                include_stats=True,
             )
-            
+
             self.assertTrue(os.path.exists(result_path))
-            
-            # Nettoyer
+            with open(result_path, "r", encoding="utf-8") as rf:
+                content = rf.read()
+            self.assertIn("WM", content)
+            self.assertIn("METADATA", content)
+            self.assertIn("STATISTICS", content)
+
             os.unlink(result_path)
-            
         finally:
             os.unlink(temp_path)
 
