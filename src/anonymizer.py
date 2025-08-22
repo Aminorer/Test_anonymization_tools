@@ -43,6 +43,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from io import BytesIO
 import hashlib
+from .utils import generate_anonymization_stats
 
 # === IMPORTS DOCUMENT ===
 try:
@@ -1693,6 +1694,55 @@ class DocumentAnonymizer:
         variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
         return variance ** 0.5
 
+    def export_anonymized_document(
+        self,
+        original_path: str,
+        entities: Optional[List[Dict]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Exporter un document anonymisé dans le format souhaité."""
+        options = options or {}
+        output_format = options.get("format", "txt").lower()
+
+        text, _ = self.document_processor.process_file(original_path)
+
+        entity_objects: List[Entity] = []
+        if entities:
+            for ent in entities:
+                if isinstance(ent, Entity):
+                    entity_objects.append(ent)
+                elif isinstance(ent, dict):
+                    entity_objects.append(
+                        Entity(
+                            id=ent.get("id", str(uuid.uuid4())),
+                            type=ent.get("type", ""),
+                            value=ent.get("value", ""),
+                            start=ent.get("start", 0),
+                            end=ent.get("end", 0),
+                            confidence=ent.get("confidence", 1.0),
+                            replacement=ent.get("replacement"),
+                            page=ent.get("page"),
+                            context=ent.get("context"),
+                            method=ent.get("method", "regex"),
+                            source_model=ent.get("source_model"),
+                        )
+                    )
+                else:
+                    raise ValueError("Invalid entity format")
+            entities = [asdict(e) for e in entity_objects]
+        else:
+            detected = self.regex_anonymizer.detect_entities(text)
+            entity_objects = detected
+            entities = [asdict(e) for e in detected]
+
+        anonymized_text = self.regex_anonymizer.anonymize_text(text, entity_objects)
+
+        stats = None
+        if options.get("include_stats"):
+            stats = generate_anonymization_stats(entities, len(text))
+
+        return self._write_export(anonymized_text, output_format, options, stats, entities)
+
     def _create_anonymized_document(
         self,
         original_path: str,
@@ -1707,6 +1757,92 @@ class DocumentAnonymizer:
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(anonymized_text)
         return output_path
+
+    def _write_export(
+        self,
+        anonymized_text: str,
+        output_format: str,
+        options: Dict[str, Any],
+        stats: Optional[Dict[str, Any]] = None,
+        entities: Optional[List[Dict]] = None,
+    ) -> str:
+        """Écrire le texte anonymisé dans le format choisi."""
+
+        filename = f"anonymized_{uuid.uuid4().hex[:8]}.{output_format}"
+        output_path = os.path.join(self.temp_dir, filename)
+
+        watermark = options.get("watermark")
+        include_audit = options.get("audit")
+        include_stats = options.get("include_stats")
+
+        if output_format == "txt":
+            with open(output_path, "w", encoding="utf-8") as f:
+                if watermark:
+                    f.write(f"{watermark}\n\n")
+                f.write(anonymized_text)
+                if include_audit and entities:
+                    f.write("\n\n=== AUDIT REPORT ===\n")
+                    for ent in entities:
+                        f.write(f"{ent.get('type')}: {ent.get('value')}\n")
+                if include_stats and stats:
+                    f.write("\n\n=== STATISTICS ===\n")
+                    for key, value in stats.items():
+                        f.write(f"{key}: {value}\n")
+            return output_path
+
+        elif output_format == "docx":
+            if not DOCX_SUPPORT:
+                raise Exception("Export DOCX non supporté")
+            doc = Document()
+            if watermark:
+                doc.add_paragraph(str(watermark))
+            doc.add_paragraph(anonymized_text)
+            if include_audit and entities:
+                doc.add_paragraph("=== AUDIT REPORT ===")
+                for ent in entities:
+                    doc.add_paragraph(f"{ent.get('type')}: {ent.get('value')}")
+            if include_stats and stats:
+                doc.add_paragraph("=== STATISTICS ===")
+                for key, value in stats.items():
+                    doc.add_paragraph(f"{key}: {value}")
+            doc.save(output_path)
+            return output_path
+
+        elif output_format == "pdf":
+            try:
+                from fpdf import FPDF
+            except ImportError as e:
+                raise Exception("Export PDF non supporté") from e
+
+            pdf = FPDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+            if watermark:
+                pdf.set_text_color(200, 200, 200)
+                pdf.text(10, 10, str(watermark))
+                pdf.set_text_color(0, 0, 0)
+            for line in anonymized_text.splitlines():
+                pdf.multi_cell(0, 10, line)
+            if include_audit and entities:
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 12)
+                pdf.cell(0, 10, "AUDIT REPORT", ln=True)
+                pdf.set_font("Arial", size=12)
+                for ent in entities:
+                    pdf.multi_cell(0, 10, f"{ent.get('type')}: {ent.get('value')}")
+            if include_stats and stats:
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 12)
+                pdf.cell(0, 10, "STATISTICS", ln=True)
+                pdf.set_font("Arial", size=12)
+                for key, value in stats.items():
+                    pdf.multi_cell(0, 10, f"{key}: {value}")
+            pdf.output(output_path)
+            return output_path
+
+        else:
+            raise ValueError(f"Unsupported format: {output_format}")
 
     def _preprocess_text(self, text: str) -> str:
         """Prétraitement optimisé du texte français"""

@@ -359,6 +359,68 @@ class TestDocumentAnonymizer(unittest.TestCase):
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0].type, "EMAIL")
 
+    def test_export_anonymized_document_with_entities(self):
+        """Vérifie l'export avec entités fournies et options"""
+        text = "Email: test@example.com"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        entity = {
+            "id": "1",
+            "type": "EMAIL",
+            "value": "test@example.com",
+            "start": 7,
+            "end": 23,
+        }
+        options = {"format": "txt", "watermark": "WM", "audit": True, "include_stats": True}
+
+        try:
+            with mock.patch.object(
+                self.anonymizer.document_processor,
+                'process_file',
+                wraps=self.anonymizer.document_processor.process_file
+            ) as mocked_proc:
+                result_path = self.anonymizer.export_anonymized_document(temp_path, [entity], options)
+                mocked_proc.assert_called_once_with(temp_path)
+
+            self.assertTrue(os.path.exists(result_path))
+            with open(result_path, 'r', encoding='utf-8') as rf:
+                content = rf.read()
+
+            self.assertIn('[EMAIL]', content)
+            self.assertIn('WM', content)
+            self.assertIn('AUDIT REPORT', content)
+            self.assertIn('total_entities', content)
+        finally:
+            os.unlink(temp_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.unlink(result_path)
+
+    def test_export_anonymized_document_auto_detect(self):
+        """Vérifie l'export avec détection automatique des entités"""
+        text = "Email: test@example.com"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        try:
+            with mock.patch.object(
+                self.anonymizer.regex_anonymizer,
+                'detect_entities',
+                wraps=self.anonymizer.regex_anonymizer.detect_entities
+            ) as mocked_detect:
+                result_path = self.anonymizer.export_anonymized_document(temp_path, None, {"format": "txt"})
+                mocked_detect.assert_called_once()
+
+            with open(result_path, 'r', encoding='utf-8') as rf:
+                content = rf.read()
+            self.assertIn('[EMAIL]', content)
+        finally:
+            os.unlink(temp_path)
+            if 'result_path' in locals() and os.path.exists(result_path):
+                os.unlink(result_path)
+
 class TestIntegration(unittest.TestCase):
     """Tests d'intégration"""
     
