@@ -34,3 +34,25 @@ class TestLegalEntityNormalizer(unittest.TestCase):
         key = self.normalizer.normalize_person_name("Jean Dupont").canonical
         self.assertIn("M. Jean Dupont", self.normalizer.registry.get(key, set()))
 
+    def test_similarity_zero_for_empty_strings(self) -> None:
+        """Similarity score should be 0.0 when either name is empty."""
+        self.assertEqual(self.normalizer.compute_similarity_score("", ""), 0.0)
+        self.assertEqual(
+            self.normalizer.compute_similarity_score("", "Dupont"), 0.0
+        )
+
+    def test_find_canonical_match_from_registry(self) -> None:
+        """find_canonical_match should search the internal registry by default."""
+        self.normalizer.register_entity_variant("Jean Dupont", "M. Jean Dupont")
+        match = self.normalizer.find_canonical_match("M. Jean Dupont")
+        self.assertIsNotNone(match)
+        self.assertEqual(match.canonical, "jean dupont")
+
+    def test_normalize_person_name_strips_accents_and_titles(self) -> None:
+        """Normalization removes accents and civil titles."""
+        data = self.normalizer.normalize_person_name("Mme José García")
+        self.assertEqual(data.canonical, "jose garcia")
+        # Cache should return the exact same object when called again
+        second = self.normalizer.normalize_person_name("Mme José García")
+        self.assertIs(data, second)
+
