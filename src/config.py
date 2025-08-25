@@ -183,3 +183,83 @@ ANONYMIZATION_PRESETS = {
         "confidence_threshold": 0.5
     }
 }
+
+# === TEMPLATES JURIDIQUES ===
+
+class LegalTemplates:
+    """Registry of domain-specific anonymization templates."""
+
+    LEGAL_TEMPLATES = {
+        "contrat_bail": {
+            "entities": ["PERSON", "ORG", "DATE", "ADDRESS", "MONEY"],
+            "preserve": ["LEGAL_REFERENCE"],
+            "special_handling": {
+                "distinguish_parties": True,
+                "geo_anonymization": True,
+            },
+            "keywords": ["contrat de bail", "bailleur", "locataire"],
+        },
+        "procedure_civile": {
+            "entities": [
+                "PERSON",
+                "ORG",
+                "DATE",
+                "CASE_NUMBER",
+                "COURT_REFERENCE",
+                "LEGAL_REFERENCE",
+            ],
+            "preserve": ["LEGAL_REFERENCE"],
+            "special_handling": {
+                "distinguish_parties": True,
+                "geo_anonymization": False,
+            },
+            "keywords": ["procédure civile", "tribunal", "audience"],
+        },
+        "acte_notarie": {
+            "entities": ["PERSON", "ORG", "DATE", "ADDRESS", "MONEY", "LEGAL_REFERENCE"],
+            "preserve": ["LEGAL_REFERENCE", "MONEY"],
+            "special_handling": {
+                "distinguish_parties": False,
+                "geo_anonymization": True,
+            },
+            "keywords": ["notarié", "notaire", "acte authentique"],
+        },
+    }
+
+    @classmethod
+    def get(cls, name: str):
+        """Return a template by its name.
+
+        Args:
+            name: Template identifier.
+
+        Returns:
+            dict | None: Template configuration if found, else None.
+        """
+
+        return cls.LEGAL_TEMPLATES.get(name)
+
+    @classmethod
+    def detect(cls, text: str):
+        """Auto-detect the template based on keywords found in ``text``.
+
+        Args:
+            text: Raw document text.
+
+        Returns:
+            tuple[str, dict] | tuple[None, None]: Detected template name and
+            configuration, or ``(None, None)`` if no template matches.
+        """
+
+        text_lower = text.lower()
+        for name, tpl in cls.LEGAL_TEMPLATES.items():
+            for keyword in tpl.get("keywords", []):
+                if keyword.lower() in text_lower:
+                    return name, tpl
+        return None, None
+
+
+# Alias for direct access if a simple mapping is preferred
+LEGAL_TEMPLATES = LegalTemplates.LEGAL_TEMPLATES
+
+
