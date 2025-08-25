@@ -39,6 +39,49 @@ class TestGroupManagement(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["id"], e1)
 
+    def test_get_grouped_entities(self):
+        """Vérifie la création correcte des groupes d'entités."""
+        # Deux entités partageant le même jeton de remplacement
+        self.manager.add_entity(
+            {"type": "PERSON", "value": "Alice", "start": 0, "end": 5, "replacement": "[PERSON_1]"}
+        )
+        self.manager.add_entity(
+            {"type": "PERSON", "value": "Bob", "start": 6, "end": 9, "replacement": "[PERSON_1]"}
+        )
+        # Réutilisation du même jeton pour une autre occurrence de "Alice"
+        self.manager.add_entity(
+            {"type": "PERSON", "value": "Alice", "start": 10, "end": 15, "replacement": "[PERSON_1]"}
+        )
+        # Entité avec un jeton différent
+        self.manager.add_entity(
+            {"type": "ORG", "value": "Acme", "start": 20, "end": 24, "replacement": "[ORG_1]"}
+        )
+
+        grouped = self.manager.get_grouped_entities()
+
+        # Deux groupes distincts attendus
+        self.assertEqual(len(grouped), 2)
+
+        person_group = grouped.get("PERSON_1")
+        self.assertIsNotNone(person_group)
+        self.assertEqual(person_group["total_occurrences"], 3)
+
+        # Vérifie les variantes et leurs positions
+        alice = person_group["variants"].get("Alice")
+        self.assertEqual(alice["count"], 2)
+        self.assertEqual(
+            alice["positions"], [{"start": 0, "end": 5}, {"start": 10, "end": 15}]
+        )
+
+        bob = person_group["variants"].get("Bob")
+        self.assertEqual(bob["count"], 1)
+        self.assertEqual(bob["positions"], [{"start": 6, "end": 9}])
+
+        org_group = grouped.get("ORG_1")
+        self.assertIsNotNone(org_group)
+        self.assertEqual(org_group["total_occurrences"], 1)
+        self.assertIn("Acme", org_group["variants"])
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
