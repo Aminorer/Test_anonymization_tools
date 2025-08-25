@@ -695,29 +695,56 @@ class EntityManager:
         return cleaned
     
     def get_entity_conflicts(self) -> List[Dict[str, Any]]:
-        """Détecter les conflits entre entités (chevauchements)"""
-        conflicts = []
+        """Détecter les conflits entre entités.
+
+        Deux types de conflits sont identifiés:
+        - ``overlap`` : lorsque deux entités se chevauchent dans le texte.
+        - ``token`` : lorsqu'une même valeur est associée à plusieurs jetons de
+          remplacement différents.
+        """
+        conflicts: List[Dict[str, Any]] = []
+
+        # --- Conflits de chevauchement ---
         sorted_entities = sorted(self.entities, key=lambda x: x.get('start', 0))
-        
+
         for i, entity1 in enumerate(sorted_entities):
-            for entity2 in sorted_entities[i+1:]:
-                # Vérifier le chevauchement
+            for entity2 in sorted_entities[i + 1:]:
                 start1, end1 = entity1.get('start', 0), entity1.get('end', 0)
                 start2, end2 = entity2.get('start', 0), entity2.get('end', 0)
-                
+
                 if start2 >= end1:
                     break  # Plus de chevauchement possible
-                
+
                 if start1 < end2 and start2 < end1:
-                    conflict = {
-                        'entity1': entity1,
-                        'entity2': entity2,
-                        'overlap_start': max(start1, start2),
-                        'overlap_end': min(end1, end2),
-                        'overlap_length': min(end1, end2) - max(start1, start2)
+                    conflicts.append(
+                        {
+                            'type': 'overlap',
+                            'entity1': entity1,
+                            'entity2': entity2,
+                            'overlap_start': max(start1, start2),
+                            'overlap_end': min(end1, end2),
+                            'overlap_length': min(end1, end2) - max(start1, start2),
+                        }
+                    )
+
+        # --- Conflits de jetons identiques pour des valeurs différentes ---
+        value_tokens: Dict[str, set] = {}
+        for entity in self.entities:
+            value = entity.get('value')
+            token = entity.get('replacement')
+            if value and token:
+                value_tokens.setdefault(value, set()).add(token)
+
+        for value, tokens in value_tokens.items():
+            if len(tokens) > 1:
+                conflicts.append(
+                    {
+                        'type': 'token',
+                        'value': value,
+                        'tokens': sorted(tokens),
                     }
-                    conflicts.append(conflict)
-        
+                )
+
         return conflicts
     
     def resolve_entity_conflicts(self, resolution_strategy: str = 'keep_highest_confidence') -> int:
@@ -761,8 +788,97 @@ class EntityManager:
         
         if resolved > 0:
             logging.info(f"Resolved {resolved} entity conflicts")
-        
+
         return resolved
+
+    # --- Helpers de résolution de conflits ---
+
+    def split_entity(self, entity_id: str, splits: List[Dict[str, Any]]) -> List[str]:
+        """Diviser une entité en plusieurs segments.
+
+        Args:
+            entity_id: identifiant de l'entité à diviser.
+            splits: liste de dictionnaires ``{"start": int, "end": int, "value": str}``
+                décrivant les nouveaux segments.
+
+        Returns:
+            Liste des identifiants des nouvelles entités créées.
+        """
+        original = self.get_entity_by_id(entity_id)
+        if not original:
+            return []
+
+        # Retirer l'entité originale
+        self.delete_entity(entity_id)
+
+        new_ids: List[str] = []
+        for data in splits:
+            new_entity = original.copy()
+            new_entity.pop('id', None)
+            new_entity.update({
+                'start': data.get('start'),
+                'end': data.get('end'),
+                'value': data.get('value', original.get('value')),
+            })
+            # Utiliser add_entity pour garantir la cohérence
+            new_ids.append(self.add_entity(new_entity))
+
+        # Remplacer les références dans les groupes
+        for group in self.groups:
+            if entity_id in group.get('entity_ids', []):
+                group['entity_ids'].remove(entity_id)
+                group['entity_ids'].extend(new_ids)
+                group['updated_at'] = datetime.now().isoformat()
+
+        self._invalidate_grouped_entities_cache()
+        return new_ids
+
+    def merge_entity_groups(self, source_token: str, target_token: str) -> int:
+        """Fusionner deux groupes basés sur le jeton de remplacement.
+
+        Toutes les entités utilisant ``source_token`` seront réassignées vers
+        ``target_token``.
+
+        Returns:
+            Le nombre d'entités modifiées.
+        """
+        modified = 0
+        for entity in self.entities:
+            if entity.get('replacement') == source_token:
+                entity['replacement'] = target_token
+                entity['updated_at'] = datetime.now().isoformat()
+                modified += 1
+
+        if modified:
+            self._invalidate_grouped_entities_cache()
+
+        return modified
+
+    def reassign_variant(self, value: str, from_token: str, to_token: str) -> int:
+        """Réassigner une variante d'un groupe à un autre.
+
+        Args:
+            value: valeur de la variante à déplacer.
+            from_token: jeton d'origine.
+            to_token: nouveau jeton.
+
+        Returns:
+            Nombre d'entités mises à jour.
+        """
+        moved = 0
+        for entity in self.entities:
+            if (
+                entity.get('value') == value
+                and entity.get('replacement') == from_token
+            ):
+                entity['replacement'] = to_token
+                entity['updated_at'] = datetime.now().isoformat()
+                moved += 1
+
+        if moved:
+            self._invalidate_grouped_entities_cache()
+
+        return moved
     
     def auto_group_entities(self, strategy: str = 'by_type') -> int:
         """Grouper automatiquement les entités"""
