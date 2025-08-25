@@ -840,7 +840,134 @@ def display_entity_manager_advanced():
 def display_entities_tab_advanced():
     """Onglet entités avec fonctionnalités avancées"""
     st.subheader("📝 Gestion des Entités")
-    
+    # Permettre de basculer entre la vue liste et groupée
+    view_mode = st.radio(
+        "Mode d'affichage",
+        ["Liste", "Groupée"],
+        key="entities_view_mode",
+        horizontal=True,
+    )
+
+    if view_mode == "Groupée":
+        grouped_entities = st.session_state.entity_manager.get_grouped_entities()
+
+        # Filtres pour la vue groupée
+        gcol1, gcol2, gcol3 = st.columns(3)
+        with gcol1:
+            hide_single = st.checkbox(
+                "Masquer occurrences uniques",
+                value=False,
+                key="hide_single_groups",
+            )
+        with gcol2:
+            sort_desc = st.checkbox(
+                "Trier par occurrences décroissantes",
+                value=True,
+                key="sort_groups_desc",
+            )
+        with gcol3:
+            group_types = sorted({g["type"] for g in grouped_entities.values()})
+            type_filter = st.multiselect(
+                "Type d'entité",
+                group_types,
+                default=group_types,
+                key="group_type_filter",
+            )
+
+        groups_list = []
+        for gid, grp in grouped_entities.items():
+            if grp["type"] not in type_filter:
+                continue
+            if hide_single and grp["total_occurrences"] <= 1:
+                continue
+            groups_list.append((gid, grp))
+
+        if sort_desc:
+            groups_list.sort(key=lambda x: x[1]["total_occurrences"], reverse=True)
+
+        for gid, grp in groups_list:
+            variants = grp.get("variants", {})
+            representative = (
+                max(variants.values(), key=lambda v: v["count"])["value"]
+                if variants
+                else ""
+            )
+            variant_count = len(variants)
+            highlight = grp["total_occurrences"] > 10
+            highlight_style = (
+                "background-color:#fff3cd;" if highlight else ""
+            )
+            st.markdown(
+                f"<div style='padding:5px;{highlight_style}'>"
+                f"<strong>{gid}</strong> "
+                f"<span style='background-color:#0d6efd;color:white;"
+                f"border-radius:10px;padding:2px 6px;margin-right:4px;'>"
+                f"{grp['total_occurrences']}</span>"
+                f"<span style='background-color:#6c757d;color:white;"
+                f"border-radius:10px;padding:2px 6px;margin-right:4px;'>"
+                f"{variant_count} variantes</span>"
+                f"{representative}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Détails", expanded=False):
+                for variant in variants.values():
+                    pos_info = ", ".join(
+                        [f"{p['start']}-{p['end']}" for p in variant.get("positions", [])]
+                    )
+                    st.write(
+                        f"- {variant['value']} ({variant['count']})"
+                        + (f" [{pos_info}]" if pos_info else "")
+                    )
+
+                new_token = st.text_input(
+                    "Remplacement du groupe:",
+                    value=grp["token"],
+                    key=f"group_token_{gid}",
+                )
+                action_col1, action_col2, action_col3 = st.columns(3)
+                with action_col1:
+                    if st.button("Mettre à jour", key=f"update_group_{gid}"):
+                        for ent in st.session_state.entity_manager.entities:
+                            if ent.get("replacement") == grp["token"]:
+                                st.session_state.entity_manager.update_entity(
+                                    ent["id"], {"replacement": new_token}
+                                )
+                        st.success("Remplacement mis à jour")
+                        st.rerun()
+                with action_col2:
+                    if st.button(
+                        "Supprimer", key=f"delete_group_{gid}"
+                    ):
+                        for ent in list(st.session_state.entity_manager.entities):
+                            if ent.get("replacement") == grp["token"]:
+                                st.session_state.entity_manager.delete_entity(ent["id"])
+                        st.success("Occurrences supprimées")
+                        st.rerun()
+                with action_col3:
+                    merge_targets = [
+                        other_gid for other_gid, _ in groups_list if other_gid != gid
+                    ]
+                    target = st.selectbox(
+                        "Fusionner avec",
+                        merge_targets,
+                        key=f"merge_target_{gid}",
+                    ) if merge_targets else None
+                    if target and st.button(
+                        "Fusionner", key=f"merge_button_{gid}"
+                    ):
+                        target_token = grouped_entities[target]["token"]
+                        for ent in st.session_state.entity_manager.entities:
+                            if ent.get("replacement") == grp["token"]:
+                                st.session_state.entity_manager.update_entity(
+                                    ent["id"], {"replacement": target_token}
+                                )
+                        st.success(f"Groupe fusionné avec {target}")
+                        st.rerun()
+
+        return
+
     # Contrôles de filtrage avancés
     col1, col2, col3, col4 = st.columns(4)
     
