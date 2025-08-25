@@ -49,10 +49,10 @@ from .utils import (
     generate_anonymization_stats,
     serialize_entity_mapping,
     compute_confidence,
-    normalize_name,
     get_name_normalization_titles,
     get_similarity_threshold,
 )
+from .legal_normalizer import LegalEntityNormalizer
 try:
     from rapidfuzz.distance import Levenshtein as RFLevenshtein
 except ImportError:  # pragma: no cover - rapidfuzz is optional at runtime
@@ -369,11 +369,16 @@ class RegexAnonymizer:
                 self._similarity_func = None
         # Titres utilisés pour la normalisation des noms
         self.titles = titles if titles is not None else get_name_normalization_titles()
-        # Cache des valeurs normalisées pour éviter les recalculs
-        self.normalization_cache: Dict[str, str] = {}
+        # Normaliseur légal pour les noms de personnes
+        self.legal_normalizer = LegalEntityNormalizer(
+            titles=set(self.titles) | LegalEntityNormalizer.DEFAULT_TITLES,
+            score_cutoff=self.score_cutoff,
+        )
         # Structures de recherche par similarité (BK-tree)
         self.bk_trees: Dict[str, BKTree] = {}
         self.bktree_threshold = 100
+        # Mapping canonique -> jeton exposé aux composants externes
+        self.canonical_token_map: Dict[str, Dict[str, str]] = {}
         logging.info(
             f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns"
         )
@@ -383,16 +388,6 @@ class RegexAnonymizer:
         if self._similarity_func is None:
             return 0.0
         return self._similarity_func(a, b)
-
-    def _get_normalized_value(self, value: str, entity_type: str) -> str:
-        """Return cached normalized value for PERSON entities."""
-        if entity_type != "PERSON":
-            return value
-        cached = self.normalization_cache.get(value)
-        if cached is None:
-            cached = normalize_name(value, titles=self.titles)
-            self.normalization_cache[value] = cached
-        return cached
 
     def _load_terms_from_file(self, path: Path) -> List[str]:
         """Load terms from a file, one per line."""
@@ -512,82 +507,120 @@ class RegexAnonymizer:
         # Réinitialiser le mapping et les compteurs pour chaque nouveau document
         self.entity_mapping = {}
         self.entity_counters = {}
+        self.canonical_token_map = {}
 
         # Première passe : construire le mapping des entités
         replacements: List[Tuple[str, str]] = []
-        token_maps: Dict[str, Dict[str, str]] = {}
         for entity in entities:
             type_map = self.entity_mapping.setdefault(entity.type, {})
-            norm_map = token_maps.setdefault(entity.type, {})
+            canonical_map = self.canonical_token_map.setdefault(entity.type, {})
             tree = self.bk_trees.get(entity.type)
 
-            norm_value = self._get_normalized_value(entity.value, entity.type)
-            canonical = norm_value
-
-            token: Optional[str] = None
-            best_score = 0.0
-            best_key: Optional[str] = None
-            if len(norm_map) >= self.bktree_threshold and RFLevenshtein is not None:
-                if tree is None:
-                    tree = BKTree(RFLevenshtein.distance)
-                    for key in norm_map.keys():
-                        tree.add(key)
-                    self.bk_trees[entity.type] = tree
-                max_dist = max(1, int((1 - self.score_cutoff) * len(norm_value)))
-                candidates = tree.search(norm_value, max_dist)
-                for cand, dist in candidates:
-                    score = 1 - dist / max(len(norm_value), len(cand))
-                    if score >= self.score_cutoff and score > best_score:
-                        best_score = score
-                        token = norm_map[cand]
-                        best_key = cand
-            else:
-                for existing_key, existing_token in norm_map.items():
-                    if norm_value in existing_key or existing_key in norm_value:
-                        score = self._similarity_score(norm_value, existing_key)
-                        if score >= self.score_cutoff and score > best_score:
-                            best_score = score
-                            token = existing_token
-                            best_key = existing_key
-
-            if token is None:
-                count = self.entity_counters.get(entity.type, 0) + 1
-                self.entity_counters[entity.type] = count
-                token = f"[{entity.type}_{count}]"
-                norm_map[norm_value] = token
-                if tree is not None:
-                    tree.add(norm_value)
-                type_map[norm_value] = {
-                    "token": token,
-                    "variants": {entity.value},
-                    "canonical": canonical,
-                    "origin": entity.value,
-                    "origin_timestamp": datetime.now().isoformat(),
-                }
-            else:
-                norm_map[norm_value] = token
-                if tree is not None:
-                    tree.add(norm_value)
-                if best_key and best_key in type_map:
-                    entry = type_map[best_key]
-                    if entity.value not in entry["variants"]:
+            if entity.type == "PERSON":
+                normalized = self.legal_normalizer.normalize_person_name(entity.value)
+                canonical = normalized.canonical
+                match = self.legal_normalizer.find_canonical_match(
+                    entity.value, canonical_map.keys()
+                )
+                token: Optional[str] = None
+                if match:
+                    canonical = match.canonical
+                    token = canonical_map.get(canonical)
+                    self.legal_normalizer.register_entity_variant(canonical, entity.value)
+                    entry = type_map.get(canonical)
+                    if entry and entity.value not in entry["variants"]:
                         entry["variants"].add(entity.value)
-                        self.merge_history.append({
-                            "original": entry.get("origin", best_key),
-                            "variant": entity.value,
-                            "token": token,
-                            "timestamp": datetime.now().isoformat(),
-                        })
-                    if entity_manager:
-                        entity_manager.update_token_variants(token, entity.value)
-                else:
-                    type_map[norm_value] = {
+                        self.merge_history.append(
+                            {
+                                "original": entry.get("origin", canonical),
+                                "variant": entity.value,
+                                "token": token,
+                                "timestamp": datetime.now().isoformat(),
+                            }
+                        )
+                        if entity_manager:
+                            entity_manager.update_token_variants(token, entity.value)
+                if token is None:
+                    count = self.entity_counters.get(entity.type, 0) + 1
+                    self.entity_counters[entity.type] = count
+                    token = f"[{entity.type}_{count}]"
+                    canonical_map[canonical] = token
+                    self.legal_normalizer.register_entity_variant(canonical, entity.value)
+                    type_map[canonical] = {
                         "token": token,
                         "variants": {entity.value},
                         "canonical": canonical,
                         "origin": entity.value,
                         "origin_timestamp": datetime.now().isoformat(),
                     }
+            else:
+                canonical = entity.value
+                token = None
+                best_score = 0.0
+                best_key: Optional[str] = None
+                if len(canonical_map) >= self.bktree_threshold and RFLevenshtein is not None:
+                    if tree is None:
+                        tree = BKTree(RFLevenshtein.distance)
+                        for key in canonical_map.keys():
+                            tree.add(key)
+                        self.bk_trees[entity.type] = tree
+                    max_dist = max(1, int((1 - self.score_cutoff) * len(canonical)))
+                    candidates = tree.search(canonical, max_dist)
+                    for cand, dist in candidates:
+                        score = 1 - dist / max(len(canonical), len(cand))
+                        if score >= self.score_cutoff and score > best_score:
+                            best_score = score
+                            token = canonical_map[cand]
+                            best_key = cand
+                else:
+                    for existing_key, existing_token in canonical_map.items():
+                        if canonical in existing_key or existing_key in canonical:
+                            score = self._similarity_score(canonical, existing_key)
+                            if score >= self.score_cutoff and score > best_score:
+                                best_score = score
+                                token = existing_token
+                                best_key = existing_key
+
+                if token is None:
+                    count = self.entity_counters.get(entity.type, 0) + 1
+                    self.entity_counters[entity.type] = count
+                    token = f"[{entity.type}_{count}]"
+                    canonical_map[canonical] = token
+                    if tree is not None:
+                        tree.add(canonical)
+                    type_map[canonical] = {
+                        "token": token,
+                        "variants": {entity.value},
+                        "canonical": canonical,
+                        "origin": entity.value,
+                        "origin_timestamp": datetime.now().isoformat(),
+                    }
+                else:
+                    canonical_map[canonical] = token
+                    if tree is not None:
+                        tree.add(canonical)
+                    if best_key and best_key in type_map:
+                        entry = type_map[best_key]
+                        if entity.value not in entry["variants"]:
+                            entry["variants"].add(entity.value)
+                            self.merge_history.append(
+                                {
+                                    "original": entry.get("origin", best_key),
+                                    "variant": entity.value,
+                                    "token": token,
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
+                        if entity_manager:
+                            entity_manager.update_token_variants(token, entity.value)
+                    else:
+                        type_map[canonical] = {
+                            "token": token,
+                            "variants": {entity.value},
+                            "canonical": canonical,
+                            "origin": entity.value,
+                            "origin_timestamp": datetime.now().isoformat(),
+                        }
 
             entity.replacement = token
             replacements.append((entity.value, token))
