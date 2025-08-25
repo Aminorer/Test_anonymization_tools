@@ -55,6 +55,15 @@ class TestRegexAnonymizer(unittest.TestCase):
         date_entities = [e for e in entities if e.type == "DATE"]
         self.assertEqual(len(date_entities), 2)
 
+    def test_entity_deduplication(self):
+        """Les entités identiques doivent être fusionnées"""
+        text = "Contact john.doe@example.com et encore john.doe@example.com"
+        entities = self.anonymizer.detect_entities(text)
+        email_entities = [e for e in entities if e.type == "EMAIL"]
+        self.assertEqual(len(email_entities), 1)
+        self.assertEqual(email_entities[0].total_occurrences, 2)
+        self.assertEqual(set(email_entities[0].variants), {"john.doe@example.com"})
+
     def test_common_word_after_title_not_person(self):
         """Expressions comme 'M. le Président' ne doivent pas être détectées"""
         text = "M. le Président a parlé."

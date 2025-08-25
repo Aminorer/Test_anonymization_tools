@@ -41,7 +41,7 @@ import re
 import unicodedata
 import tempfile
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 from typing import TYPE_CHECKING
 from dataclasses import dataclass, asdict
 from io import BytesIO
@@ -333,6 +333,10 @@ class Entity:
     context: Optional[str] = None
     method: Optional[str] = "regex"  # "regex", "spacy", "transformers"
     source_model: Optional[str] = None
+    # Métadonnées de déduplication
+    total_occurrences: int = 1
+    variants: Optional[List[str]] = None
+    all_positions: Optional[List[Tuple[int, int]]] = None
 
 class RegexAnonymizer:
     """Anonymiseur Regex avancé avec patterns français optimisés"""
@@ -465,21 +469,21 @@ class RegexAnonymizer:
         compute_conf: bool = True,
     ) -> List[Entity]:
         """Détection d'entités avec patterns regex optimisés"""
-        entities = []
+        raw_entities: List[Entity] = []
         entity_id = 0
-        
+
         for entity_type, pattern in self.patterns.items():
             try:
                 compiled_pattern = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-                
+
                 for match in compiled_pattern.finditer(text):
                     # Normaliser le type d'entité
                     normalized_type = self._normalize_entity_type(entity_type)
-                    
+
                     # Validation de l'entité
                     if not self._is_valid_entity_match(match.group(), normalized_type):
                         continue
-                    
+
                     entity = Entity(
                         id=f"regex_{entity_id}",
                         type=normalized_type,
@@ -491,13 +495,16 @@ class RegexAnonymizer:
                         context=self._extract_context(text, match.start(), match.end()),
                         method="regex"
                     )
-                    entities.append(entity)
+                    raw_entities.append(entity)
                     entity_id += 1
-                    
+
             except re.error as e:
                 logging.warning(f"Pattern regex invalide pour {entity_type}: {e}")
                 continue
-        
+
+        # Déduplication directe des entités détectées
+        entities = self._deduplicate_entities(raw_entities, text)
+
         # Post-traitement: éliminer chevauchements et nettoyer
         entities = self._remove_overlapping_entities(entities)
         entities = self._clean_entities(entities)
@@ -839,8 +846,64 @@ class RegexAnonymizer:
             f"**{entity_value}**" + 
             context[relative_end:]
         )
-        
+
         return highlighted_context.strip()
+
+    def _get_person_signature(self, name: str) -> str:
+        """Normalise un nom de personne pour la déduplication"""
+        clean = re.sub(r"^(M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+", "", name, flags=re.IGNORECASE)
+        return clean.lower().strip()
+
+    def _get_entity_signature(self, entity: Entity) -> Tuple[str, str]:
+        """Retourne une signature unique pour l'entité"""
+        if entity.type == "PERSON":
+            sig = self._get_person_signature(entity.value)
+        else:
+            sig = entity.value.lower().strip()
+        return (entity.type, sig)
+
+    def _count_all_occurrences(self, text: str, entity_list: List[Entity]) -> int:
+        """Compte toutes les occurrences de toutes les variantes"""
+        total = 0
+        seen_positions: Set[Tuple[int, int]] = set()
+        for ent in entity_list:
+            for match in re.finditer(re.escape(ent.value), text, re.IGNORECASE):
+                pos = (match.start(), match.end())
+                if pos not in seen_positions:
+                    seen_positions.add(pos)
+                    total += 1
+        return total
+
+    def _deduplicate_entities(self, raw_entities: List[Entity], text: str) -> List[Entity]:
+        """Fusionne les entités ayant la même signature"""
+        groups: Dict[Tuple[str, str], List[Entity]] = {}
+        for ent in raw_entities:
+            signature = self._get_entity_signature(ent)
+            groups.setdefault(signature, []).append(ent)
+
+        final_entities: List[Entity] = []
+        for (etype, _sig), group in groups.items():
+            best_entity = max(group, key=lambda e: len(e.value))
+            total_count = self._count_all_occurrences(text, group)
+            final_entity = Entity(
+                id=best_entity.id,
+                type=etype,
+                value=best_entity.value,
+                start=best_entity.start,
+                end=best_entity.end,
+                confidence=best_entity.confidence,
+                replacement=best_entity.replacement,
+                page=best_entity.page,
+                context=best_entity.context,
+                method=best_entity.method,
+                source_model=best_entity.source_model,
+                total_occurrences=total_count,
+                variants=list(dict.fromkeys([e.value for e in group])),
+                all_positions=[(e.start, e.end) for e in group],
+            )
+            final_entities.append(final_entity)
+
+        return final_entities
     
     def _remove_overlapping_entities(self, entities: List[Entity]) -> List[Entity]:
         """Éliminer les chevauchements avec priorité intelligente"""
