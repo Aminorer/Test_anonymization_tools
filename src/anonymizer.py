@@ -51,6 +51,7 @@ from .utils import (
     compute_confidence,
     get_name_normalization_titles,
     get_similarity_threshold,
+    get_similarity_weights,
 )
 from .legal_normalizer import LegalEntityNormalizer
 try:
@@ -342,6 +343,7 @@ class RegexAnonymizer:
         self.score_cutoff = (
             score_cutoff if score_cutoff is not None else get_similarity_threshold()
         )
+        self.similarity_weights = get_similarity_weights()
         # Pré-chargement de la fonction de similarité pour éviter les reimportations
         self._similarity_func = None
         try:
@@ -373,6 +375,7 @@ class RegexAnonymizer:
         self.legal_normalizer = LegalEntityNormalizer(
             titles=set(self.titles) | LegalEntityNormalizer.DEFAULT_TITLES,
             score_cutoff=self.score_cutoff,
+            weights=self.similarity_weights,
         )
         # Structures de recherche par similarité (BK-tree)
         self.bk_trees: Dict[str, BKTree] = {}

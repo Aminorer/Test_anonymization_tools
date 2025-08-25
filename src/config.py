@@ -23,6 +23,12 @@ TEMP_FILE_RETENTION = 3600  # 1 heure en secondes
 NAME_NORMALIZATION = {
     "titles": ["mr", "mme", "dr", "me", "maître"],
     "similarity_threshold": 0.85,
+    # Default weights for name similarity components
+    "similarity_weights": {
+        "levenshtein": 0.5,
+        "jaccard": 0.3,
+        "phonetic": 0.2,
+    },
 }
 
 # === PATTERNS REGEX OPTIMISÉS (SANS LOC COMME DEMANDÉ) ===

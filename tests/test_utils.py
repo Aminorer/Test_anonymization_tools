@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from src.utils import normalize_name, similarity
+from src.utils import normalize_name, similarity, get_similarity_weights
 
 
 class TestNormalizeName(unittest.TestCase):
@@ -29,4 +29,13 @@ class TestSimilarity(unittest.TestCase):
             self.assertFalse(similarity("Jean", "Paul"))
         finally:
             del os.environ["ANONYMIZER_SIMILARITY_THRESHOLD"]
+
+    def test_env_weights(self):
+        os.environ["ANONYMIZER_SIMILARITY_WEIGHTS"] = "levenshtein=1,jaccard=0,phonetic=0"
+        try:
+            weights = get_similarity_weights()
+            self.assertEqual(weights["levenshtein"], 1.0)
+            self.assertAlmostEqual(sum(weights.values()), 1.0)
+        finally:
+            del os.environ["ANONYMIZER_SIMILARITY_WEIGHTS"]
 
