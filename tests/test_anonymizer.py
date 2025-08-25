@@ -105,7 +105,7 @@ class TestRegexAnonymizer(unittest.TestCase):
         delatour_entry = person_map.get("de la tour")
         self.assertEqual(full_dupont["variants"], {"M. Jean Dûpont"})
         self.assertEqual(short_dupont["variants"], {"Dupont"})
-        self.assertNotEqual(full_dupont["token"], short_dupont["token"])
+        self.assertEqual(full_dupont["token"], short_dupont["token"])
         self.assertEqual(delatour_entry["variants"], {"Mme de La Tour", "de La Tour"})
 
     def test_token_reuse_with_inclusion(self):
@@ -179,11 +179,13 @@ class TestRegexAnonymizer(unittest.TestCase):
         anonymized, mapping = anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
         self.assertIn("jean dupont", person_map)
-        self.assertEqual(len(person_map), 1)
-        entry = person_map["jean dupont"]
-        self.assertIn("Jean Dupont", entry["variants"])
-        self.assertIn("J. Dupont", entry["variants"])
-        token = entry["token"]
+        self.assertIn("j dupont", person_map)
+        self.assertEqual(
+            person_map["jean dupont"]["token"], person_map["j dupont"]["token"]
+        )
+        self.assertIn("Jean Dupont", person_map["jean dupont"]["variants"])
+        self.assertIn("J. Dupont", person_map["j dupont"]["variants"])
+        token = person_map["jean dupont"]["token"]
         self.assertEqual(anonymized.count(token), 2)
 
     def test_ssn_detection_valid_invalid(self):
