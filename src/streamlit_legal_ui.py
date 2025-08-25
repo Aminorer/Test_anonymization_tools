@@ -59,40 +59,55 @@ def display_legal_entity_manager(
     st.header("\ud83d\uddc3\ufe0f Gestionnaire d'entit\u00e9s")
     manager = VariantManager(groups)
 
-    table_data: List[Dict[str, Any]] = []
-    for gid, g in manager.groups.items():
-        table_data.append(
+    # Search field to filter groups by token
+    search_term = st.text_input("Rechercher un groupe", "").lower()
+
+    filtered_groups = {
+        gid: g
+        for gid, g in manager.groups.items()
+        if search_term in g.get("token", "").lower()
+    }
+
+    # Header for the table
+    header_cols = st.columns([3, 2, 1, 1])
+    header_cols[0].markdown("**Token**")
+    header_cols[1].markdown("**Occurrences**")
+    header_cols[2].markdown("**Gérer**")
+    header_cols[3].markdown("**Supprimer**")
+
+    table_rows: List[Dict[str, Any]] = []
+    for gid, group in filtered_groups.items():
+        cols = st.columns([3, 2, 1, 1])
+        token = group.get("token")
+        occurrences = group.get("total_occurrences", 0)
+        cols[0].write(token)
+        cols[1].write(occurrences)
+        manage_clicked = cols[2].button("Gérer", key=f"manage_{gid}")
+        delete_clicked = cols[3].button("Supprimer", key=f"delete_{gid}")
+
+        table_rows.append(
             {
-                "Group": gid,
-                "Token": g.get("token"),
-                "Occurrences": g.get("total_occurrences", 0),
-                "Entities": ", ".join(v["value"] for v in g.get("variants", [])),
+                "Token": token,
+                "Occurrence Count": occurrences,
+                "Manage": manage_clicked,
+                "Delete": delete_clicked,
+                "id": gid,
             }
         )
 
-    column_order = ["Token", "Occurrences", "Entities"]
-    edited_df = st.data_editor(
-        pd.DataFrame(table_data),
+        if manage_clicked:
+            st.session_state[f"show_details_{gid}"] = True
+        if delete_clicked:
+            st.session_state["delete_group"] = gid
+
+    # Display the table for reference (non-interactive)
+    st.dataframe(
+        pd.DataFrame(table_rows)[["Token", "Occurrence Count", "Manage", "Delete"]],
         hide_index=True,
-        column_order=column_order,
     )
 
-    for row in edited_df.to_dict(orient="records"):
-        gid = row["Group"]
-        new_token = row["Token"]
-        old_token = manager.groups[gid]["token"]
-        if new_token != old_token:
-            manager.groups[gid]["token"] = new_token
-            if entity_manager:
-                for entity in entity_manager.entities:
-                    if entity.get("replacement") == old_token:
-                        entity["replacement"] = new_token
-                entity_manager._invalidate_grouped_entities_cache()
-
-    groups[:] = list(manager.groups.values())
-
+    # Show variant management for selected groups
     for group in list(manager.groups.values()):
-        display_entity_group_compact(group)
         if st.session_state.get(f"show_details_{group['id']}"):
             display_variant_management(group, manager)
             if st.button("\u2b05\ufe0f Retour", key=f"back_{group['id']}"):
