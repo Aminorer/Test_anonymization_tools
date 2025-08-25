@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import hashlib
 import json
+import chardet
 
 from .config import NAME_NORMALIZATION
 
@@ -728,16 +729,29 @@ def log_processing_metrics(start_time: datetime, entities_count: int,
 def ensure_unicode(text: str) -> str:
     """S'assurer que le texte est en Unicode correct"""
     if isinstance(text, bytes):
-        # Essayer plusieurs encodages
-        encodings = ['utf-8', 'latin-1', 'cp1252']
-        for encoding in encodings:
+        # Essayer UTF-8 en premier
+        try:
+            return text.decode('utf-8')
+        except UnicodeDecodeError:
+            pass
+
+        # Tentative d'auto-détection d'encodage
+        detection = chardet.detect(text)
+        encoding = detection.get('encoding')
+        confidence = detection.get('confidence', 0)
+        if encoding and confidence > 0.5:
             try:
                 return text.decode(encoding)
             except UnicodeDecodeError:
-                continue
-        # Si aucun encodage ne fonctionne, utiliser errors='replace'
-        return text.decode('utf-8', errors='replace')
-    
+                pass
+
+        logging.error(
+            "Échec du décodage du texte (encodage détecté: %s, confiance: %.2f)",
+            encoding,
+            confidence,
+        )
+        raise UnicodeDecodeError(encoding or "unknown", text, 0, len(text), "decoding failed")
+
     return str(text)
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:

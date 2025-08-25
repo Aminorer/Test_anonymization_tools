@@ -1,7 +1,8 @@
 import os
 import unittest
+from unittest.mock import patch
 
-from src.utils import normalize_name, similarity, get_similarity_weights
+from src.utils import normalize_name, similarity, get_similarity_weights, ensure_unicode
 
 
 class TestNormalizeName(unittest.TestCase):
@@ -38,4 +39,18 @@ class TestSimilarity(unittest.TestCase):
             self.assertAlmostEqual(sum(weights.values()), 1.0)
         finally:
             del os.environ["ANONYMIZER_SIMILARITY_WEIGHTS"]
+
+
+class TestEnsureUnicode(unittest.TestCase):
+    """Tests for the ensure_unicode utility."""
+
+    def test_preserves_accented_characters(self):
+        data = "Café".encode("utf-8")
+        self.assertEqual(ensure_unicode(data), "Café")
+
+    def test_raises_on_unknown_encoding(self):
+        bad_bytes = b"\xff\xfe\xfd"
+        with patch("src.utils.chardet.detect", return_value={"encoding": None, "confidence": 0}):
+            with self.assertRaises(UnicodeDecodeError):
+                ensure_unicode(bad_bytes)
 
