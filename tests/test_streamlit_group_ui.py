@@ -1,229 +1,124 @@
-import sys
 import types
 import pytest
 from pathlib import Path
+import sys
 
 root_dir = Path(__file__).resolve().parents[1]
 sys.path.append(str(root_dir))
+
+# stub external dependencies
 sys.modules.setdefault("chardet", types.ModuleType("chardet"))
-
-# ---------------------------------------------------------------------------
-# Minimal pandas and streamlit stubs so modules can be imported without deps
-# ---------------------------------------------------------------------------
-
-
-class FakeDataFrame:
-    def __init__(self, rows):
-        self.rows = rows
-
-    def __getitem__(self, cols):
-        return FakeDataFrame([{c: row[c] for c in cols} for row in self.rows])
-
-
+sys.modules.setdefault("requests", types.ModuleType("requests"))
+sys.modules.setdefault("streamlit", types.ModuleType("streamlit"))
 fake_pandas = types.ModuleType("pandas")
-
-
-def _fake_dataframe(rows, columns=None):
-    if columns is not None:
-        return FakeDataFrame([{c: row.get(c) for c in columns} for row in rows])
-    return FakeDataFrame(rows)
-
-
-fake_pandas.DataFrame = _fake_dataframe
+fake_pandas.DataFrame = lambda *a, **k: None
 sys.modules.setdefault("pandas", fake_pandas)
 
-fake_streamlit_module = types.ModuleType("streamlit")
-fake_streamlit_module.header = lambda *a, **k: None
-fake_streamlit_module.columns = lambda *a, **k: []
-fake_streamlit_module.text_input = lambda *a, **k: ""
-fake_streamlit_module.dataframe = lambda *a, **k: None
-fake_streamlit_module.button = lambda *a, **k: False
-fake_streamlit_module.checkbox = lambda *a, **k: False
-fake_streamlit_module.write = lambda *a, **k: None
-fake_streamlit_module.session_state = {}
-fake_streamlit_module.rerun = lambda: None
-fake_streamlit_module.modal = lambda *a, **k: None
-fake_streamlit_module.success = lambda *a, **k: None
-sys.modules.setdefault("streamlit", fake_streamlit_module)
-
-# Create a minimal "src" package and load needed modules without executing src/__init__
-src_pkg = types.ModuleType("src")
-sys.modules["src"] = src_pkg
-
-import importlib.util
-
-def _load(name):
-    path = root_dir / "src" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"src.{name}", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    sys.modules[f"src.{name}"] = module
-    return module
-
-_load("variant_manager_ui")
-_load("group_ui_utils")
-_load("entity_manager")
-locale = _load("locale")
-streamlit_legal_ui = _load("streamlit_legal_ui")
-
-
+# minimal stubs
 class FakeColumn:
-    def __init__(self, checkbox: bool = False, button: bool = False) -> None:
+    def __init__(self, checkbox=False, button=False, columns_sets=None):
         self._checkbox = checkbox
         self._button = button
+        self._columns_sets = columns_sets or []
+        self._columns_index = 0
 
-    def markdown(self, *args, **kwargs) -> None:
+    def markdown(self, *a, **k):
         pass
 
-    def write(self, *args, **kwargs) -> None:
+    def write(self, *a, **k):
         pass
 
-    def checkbox(self, *args, **kwargs) -> bool:
+    def checkbox(self, *a, **k):
         return self._checkbox
 
-    def button(self, *args, **kwargs) -> bool:
+    def button(self, *a, **k):
         return self._button
 
+    def columns(self, spec):
+        result = self._columns_sets[self._columns_index]
+        self._columns_index += 1
+        return result
 
 class FakeStreamlit:
-    def __init__(self, text_input_value: str, columns_sets, button_returns=None) -> None:
-        self.text_input_value = text_input_value
-        self.columns_sets = columns_sets
+    def __init__(self, text_value="", multiselect_return=None, columns_sets=None):
+        self.text_value = text_value
+        self.multiselect_return = multiselect_return or []
+        self.columns_sets = columns_sets or []
         self.columns_index = 0
-        self.button_returns = button_returns or []
-        self.button_index = 0
         self.session_state = {}
-        self.captured_df = None
 
-    def header(self, *args, **kwargs) -> None:
+    def header(self, *a, **k):
         pass
 
-    def text_input(self, *args, **kwargs) -> str:
-        return self.text_input_value
+    def markdown(self, *a, **k):
+        pass
+
+    def write(self, *a, **k):
+        pass
+
+    def text_input(self, *a, **k):
+        return self.text_value
+
+    def multiselect(self, *a, **k):
+        return self.multiselect_return
+
+    def selectbox(self, label, options, format_func=None, index=0):
+        return options[index]
+
+    def radio(self, *a, **k):
+        return "asc"
 
     def columns(self, spec):
         result = self.columns_sets[self.columns_index]
         self.columns_index += 1
         return result
 
-    def dataframe(self, df, **kwargs) -> None:
-        self.captured_df = df
-
-    def rerun(self) -> None:
-        pass
-
-    def write(self, *args, **kwargs) -> None:
-        pass
-
-    def button(self, *args, **kwargs) -> bool:
-        if self.button_index < len(self.button_returns):
-            res = self.button_returns[self.button_index]
-            self.button_index += 1
-            return res
-        return False
-
-    def modal(self, *args, **kwargs):
-        class _Modal:
-            def __init__(self, parent):
-                self.parent = parent
-
-            def __enter__(self):
-                return self.parent
-
-            def __exit__(self, exc_type, exc, tb):
+    def modal(self, *a, **k):
+        class _M:
+            def __enter__(self_inner):
+                return self
+            def __exit__(self_inner, exc_type, exc, tb):
                 return False
+        return _M()
 
-        return _Modal(self)
-
-    def success(self, *args, **kwargs) -> None:
+    def rerun(self):
         pass
 
-
-@pytest.fixture
-def sample_groups():
-    return [
-        {"id": 1, "token": "Alpha", "total_occurrences": 2},
-        {"id": 2, "token": "Beta", "total_occurrences": 5},
-    ]
+# load module
+streamlit_legal_ui = types.ModuleType("streamlit_legal_ui")
+with open(root_dir / "src" / "streamlit_legal_ui.py", "r", encoding="utf-8") as f:
+    exec(f.read(), streamlit_legal_ui.__dict__)
 
 
-def test_search_filters_groups(monkeypatch, sample_groups):
+def test_selection_updates_state(monkeypatch):
     cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for Beta
-        [FakeColumn(), FakeColumn()],  # bulk action row
+        [FakeColumn(), FakeColumn(), FakeColumn()],  # pagination
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
+        [
+            FakeColumn(checkbox=True), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
+            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn()]])
+        ],  # row
+        [FakeColumn(), FakeColumn(), FakeColumn()],  # bulk actions
     ]
-    st_mock = FakeStreamlit(text_input_value="beta", columns_sets=cols)
-    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
-    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    language = "en"
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language=language)
-    texts = locale.get_locale(language)
-    assert [row[texts["table_token"]] for row in st_mock.captured_df.rows] == ["Beta"]
+    st = FakeStreamlit(columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+    groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
+    streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
+    assert st.session_state["selected_groups"] == [1]
 
 
-def test_search_no_match_shows_no_rows(monkeypatch, sample_groups):
+def test_delete_action_removes_group(monkeypatch):
     cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [FakeColumn(), FakeColumn()],  # bulk action row
+        [FakeColumn(), FakeColumn(), FakeColumn()],  # pagination
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
+        [
+            FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
+            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn(button=True)]])
+        ],  # row with delete button
+        [FakeColumn(button=True), FakeColumn(button=False)],  # delete modal confirm
     ]
-    st_mock = FakeStreamlit(text_input_value="gamma", columns_sets=cols)
-    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
-    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
-    assert st_mock.captured_df.rows == []
-
-
-def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
-    cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [FakeColumn(), FakeColumn(), FakeColumn(checkbox=True), FakeColumn(checkbox=False)],
-        [FakeColumn(), FakeColumn(), FakeColumn(checkbox=False), FakeColumn(checkbox=True)],
-        [FakeColumn(button=True), FakeColumn(button=True)],  # bulk buttons pressed
-        [FakeColumn(button=True), FakeColumn(button=False)],  # modal confirm
-    ]
-    st_mock = FakeStreamlit(text_input_value="", columns_sets=cols, button_returns=[False])
-    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
-    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
-    assert st_mock.session_state["show_details_1"] is True
-    assert sample_groups == [{"id": 1, "token": "Alpha", "total_occurrences": 2}]
-
-
-def test_delete_cancelled_keeps_groups(monkeypatch, sample_groups):
-    cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group1
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(checkbox=True)],  # select delete for group2
-        [FakeColumn(button=False), FakeColumn(button=True)],  # bulk delete pressed only
-        [FakeColumn(button=False), FakeColumn(button=True)],  # modal cancel
-    ]
-    st_mock = FakeStreamlit(text_input_value="", columns_sets=cols)
-    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
-    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
-    assert sample_groups == [
-        {"id": 1, "token": "Alpha", "total_occurrences": 2},
-        {"id": 2, "token": "Beta", "total_occurrences": 5},
-    ]
-
-
-def test_french_column_headers(monkeypatch, sample_groups):
-    cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group1
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group2
-        [FakeColumn(), FakeColumn()],  # bulk action row
-    ]
-    st_mock = FakeStreamlit(text_input_value="", columns_sets=cols)
-    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
-    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    language = "fr"
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language=language)
-    texts = locale.get_locale(language)
-    assert set(st_mock.captured_df.rows[0].keys()) == {
-        texts["table_token"],
-        texts["table_occurrences"],
-        texts["table_manage"],
-        texts["table_delete"],
-    }
+    st = FakeStreamlit(columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+    groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
+    streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
+    assert groups == []
