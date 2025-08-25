@@ -12,6 +12,12 @@ class EntityManager:
         self.groups = []
         self.history = []
         self.max_history = 50
+        # Cache for grouped entities to avoid recomputation
+        self._grouped_entities_cache: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def _invalidate_grouped_entities_cache(self) -> None:
+        """Invalidate cached grouped entities."""
+        self._grouped_entities_cache = None
     
     def add_entity(self, entity_data: Dict[str, Any]) -> str:
         """Ajouter une nouvelle entité"""
@@ -32,6 +38,8 @@ class EntityManager:
             
             # Ajouter à la liste
             self.entities.append(entity_data)
+            # Cache des groupes obsolète
+            self._invalidate_grouped_entities_cache()
             
             # Sauvegarder dans l'historique
             self._save_to_history("add_entity", entity_data['id'])
@@ -58,6 +66,8 @@ class EntityManager:
             # Appliquer les mises à jour
             entity.update(updates)
             entity['updated_at'] = datetime.now().isoformat()
+            # Invalidate grouped cache as entity data changed
+            self._invalidate_grouped_entities_cache()
             
             # Sauvegarder dans l'historique
             self._save_to_history("update_entity", entity_id, old_entity)
@@ -83,6 +93,8 @@ class EntityManager:
             
             # Supprimer de la liste
             self.entities = [e for e in self.entities if e['id'] != entity_id]
+            # Invalidate grouped cache as entities changed
+            self._invalidate_grouped_entities_cache()
             
             # Supprimer des groupes
             self._remove_entity_from_all_groups(entity_id)
@@ -100,6 +112,7 @@ class EntityManager:
 
     def update_token_variants(self, token: str, variant: str) -> None:
         """Mettre à jour toutes les entités partageant un même jeton."""
+        updated = False
         for entity in self.entities:
             if entity.get("replacement") == token:
                 variants = set(entity.get("variants", []))
@@ -107,6 +120,55 @@ class EntityManager:
                     variants.add(variant)
                     entity["variants"] = list(variants)
                     entity["updated_at"] = datetime.now().isoformat()
+                    updated = True
+        if updated:
+            # Invalidate cache only if something changed
+            self._invalidate_grouped_entities_cache()
+
+    def get_grouped_entities(self) -> Dict[str, Dict[str, Any]]:
+        """Group entities by their replacement token and provide statistics.
+
+        Returns:
+            A dictionary keyed by group id (e.g. "PERSON_1") containing:
+            - type: entity type
+            - token: replacement token
+            - total_occurrences: total entities using this token
+            - variants: mapping of original values to their stats
+                Each variant stores: value, count, positions
+        """
+        if self._grouped_entities_cache is not None:
+            return self._grouped_entities_cache
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for entity in self.entities:
+            token = entity.get("replacement")
+            if not token:
+                continue
+            group_id = token.strip("[]")
+            group = grouped.setdefault(
+                group_id,
+                {
+                    "type": entity.get("type"),
+                    "token": token,
+                    "total_occurrences": 0,
+                    "variants": {},
+                },
+            )
+
+            group["total_occurrences"] += 1
+
+            value = entity.get("value")
+            variant_entry = group["variants"].setdefault(
+                value,
+                {"value": value, "count": 0, "positions": []},
+            )
+            variant_entry["count"] += 1
+            variant_entry["positions"].append(
+                {"start": entity.get("start"), "end": entity.get("end")}
+            )
+
+        self._grouped_entities_cache = grouped
+        return grouped
     
     def get_entity_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
         """Récupérer une entité par son ID"""
