@@ -159,6 +159,7 @@ export TEMP_RETENTION="3600"     # 1 heure
 # Normalisation des noms
 export ANONYMIZER_TITLES="mr,mme,dr,me,maître"  # titres supprimés par défaut
 export ANONYMIZER_SIMILARITY_THRESHOLD="0.85"     # seuil de similarité pour le regroupement
+export ANONYMIZER_SIMILARITY_WEIGHTS="levenshtein=0.5,jaccard=0.3,phonetic=0.2"  # poids des composantes de similarité
 ```
 
 Les mêmes paramètres peuvent être fournis directement au constructeur de
@@ -174,7 +175,8 @@ anonymizer = RegexAnonymizer(
 ```
 
 Par défaut, les titres supprimés sont `mr`, `mme`, `dr`, `me`, `maître` et le
-seuil de similarité est `0.85`.
+seuil de similarité est `0.85`. Les poids de similarité par défaut sont `0.5`
+pour Levenshtein, `0.3` pour Jaccard et `0.2` pour la phonétique.
 
 ### **Algorithme de similarité**
 

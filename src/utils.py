@@ -134,6 +134,37 @@ def get_similarity_threshold() -> float:
     return float(NAME_NORMALIZATION.get("similarity_threshold", 0.85))
 
 
+def get_similarity_weights() -> Dict[str, float]:
+    """Return similarity component weights from env or configuration.
+
+    The environment variable ``ANONYMIZER_SIMILARITY_WEIGHTS`` can override
+    configuration values. It should contain comma-separated ``key=value`` pairs
+    such as ``"levenshtein=0.5,jaccard=0.3,phonetic=0.2"``.
+    """
+
+    default = NAME_NORMALIZATION.get(
+        "similarity_weights",
+        {"levenshtein": 0.5, "jaccard": 0.3, "phonetic": 0.2},
+    )
+    weights = {k: float(v) for k, v in default.items()}
+
+    env_value = os.getenv("ANONYMIZER_SIMILARITY_WEIGHTS")
+    if env_value:
+        try:
+            for part in env_value.split(","):
+                if not part or "=" not in part:
+                    continue
+                key, value = part.split("=", 1)
+                weights[key.strip()] = float(value)
+        except ValueError:
+            pass
+
+    total = sum(weights.values())
+    if total > 0:
+        weights = {k: v / total for k, v in weights.items()}
+    return weights
+
+
 def similarity(
     a: str,
     b: str,

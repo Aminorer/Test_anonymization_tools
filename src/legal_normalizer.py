@@ -9,7 +9,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Set
 
-from .utils import PARTICLES
+from .utils import PARTICLES, get_similarity_threshold, get_similarity_weights
 
 
 @dataclass
@@ -45,7 +45,8 @@ class LegalEntityNormalizer:
         self,
         titles: Optional[Iterable[str]] = None,
         particles: Optional[Iterable[str]] = None,
-        score_cutoff: float = 0.85,
+        score_cutoff: Optional[float] = None,
+        weights: Optional[Dict[str, float]] = None,
     ) -> None:
         self.titles: Set[str] = (
             {t.strip().lower() for t in titles}
@@ -57,7 +58,10 @@ class LegalEntityNormalizer:
             if particles is not None
             else set(PARTICLES)
         )
-        self.score_cutoff = score_cutoff
+        self.score_cutoff = (
+            score_cutoff if score_cutoff is not None else get_similarity_threshold()
+        )
+        self.weights = weights if weights is not None else get_similarity_weights()
 
         pattern = r"^(?:%s)\.?\s+" % "|".join(sorted(self.titles))
         self._title_regex = re.compile(pattern, re.IGNORECASE)
@@ -124,25 +128,85 @@ class LegalEntityNormalizer:
         return result
 
     def compute_similarity_score(self, a: str, b: str) -> float:
-        """Compute a similarity score between two names.
+        """Compute a composite similarity score between two names.
 
-        The score is expressed between 0 and 1. It is computed on the
-        canonicalized forms of ``a`` and ``b``. ``rapidfuzz`` is used if
-        available, otherwise a ``difflib`` fallback is employed.
+        The score combines three components:
+        - Levenshtein ratio on canonical forms
+        - Jaccard token overlap
+        - Phonetic similarity using a French ``metaphone``-like algorithm
+
+        Individual weights for each component are configurable via
+        ``self.weights``. The resulting score is expressed between 0 and 1.
         """
+
         norm_a = self.normalize_person_name(a).canonical
         norm_b = self.normalize_person_name(b).canonical
         if not norm_a or not norm_b:
             return 0.0
 
+        # Levenshtein ratio
         try:
             from rapidfuzz import fuzz
 
-            return fuzz.ratio(norm_a, norm_b) / 100.0
+            lev = fuzz.ratio(norm_a, norm_b) / 100.0
         except ImportError:
             from difflib import SequenceMatcher
 
-            return SequenceMatcher(None, norm_a, norm_b).ratio()
+            lev = SequenceMatcher(None, norm_a, norm_b).ratio()
+
+        # Jaccard token overlap
+        tokens_a = set(norm_a.split())
+        tokens_b = set(norm_b.split())
+        if tokens_a or tokens_b:
+            jaccard = len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
+        else:
+            jaccard = 0.0
+
+        # Phonetic similarity
+        ph_a = self._metaphone_fr(norm_a)
+        ph_b = self._metaphone_fr(norm_b)
+        if ph_a and ph_b:
+            from difflib import SequenceMatcher
+
+            phonetic = SequenceMatcher(None, ph_a, ph_b).ratio()
+        else:
+            phonetic = 0.0
+
+        weights = self.weights
+        score = (
+            weights.get("levenshtein", 0.0) * lev
+            + weights.get("jaccard", 0.0) * jaccard
+            + weights.get("phonetic", 0.0) * phonetic
+        )
+        return score
+
+    @staticmethod
+    def _metaphone_fr(value: str) -> str:
+        """Return a crude French metaphone representation of ``value``."""
+
+        value = unicodedata.normalize("NFKD", value)
+        value = "".join(c for c in value if not unicodedata.combining(c))
+        value = value.lower()
+        value = re.sub(r"[^a-z]", "", value)
+
+        replacements = [
+            ("ph", "f"),
+            ("th", "t"),
+            ("ch", "x"),
+            ("sch", "x"),
+            ("gn", "n"),
+            ("qu", "k"),
+            ("ck", "k"),
+            ("cq", "k"),
+        ]
+        for old, new in replacements:
+            value = value.replace(old, new)
+
+        if not value:
+            return ""
+        first = value[0]
+        rest = re.sub(r"[aeiouy]", "", value[1:])
+        return (first + rest).upper()
 
     def find_canonical_match(
         self,
