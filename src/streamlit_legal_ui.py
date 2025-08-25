@@ -7,7 +7,7 @@ from src.variant_manager_ui import (
     display_entity_group_compact,
     display_variant_management,
 )
-from src.group_ui_utils import filter_groups, mark_groups_for_management, delete_groups
+from src.group_ui_utils import mark_groups_for_management, delete_groups
 from src.entity_manager import EntityManager
 from src.locale import get_locale, LOCALES
 
@@ -72,15 +72,21 @@ def display_legal_entity_manager(
 
     st.header(texts["entity_manager_header"])
     manager = VariantManager(groups)
+    search = st.text_input("Rechercher un groupe", "")
 
     # Feedback after a successful deletion
     if st.session_state.pop("delete_success", False):
         st.success(texts["delete_success"])
 
-    # Search field to filter groups by token
-    search_term = st.text_input(texts["search_group"], "").lower()
-
-    filtered_groups = filter_groups(manager.groups, search_term)
+    # Filter groups by search term
+    if search:
+        filtered_groups = {
+            gid: g
+            for gid, g in manager.groups.items()
+            if search.lower() in g.get("token", "").lower()
+        }
+    else:
+        filtered_groups = manager.groups
 
     # Header for the table
     header_cols = st.columns([3, 2, 1, 1])
@@ -117,17 +123,16 @@ def display_legal_entity_manager(
         )
 
     # Display the table for reference (non-interactive)
-    st.dataframe(
-        pd.DataFrame(table_rows)[
-            [
-                texts["table_token"],
-                texts["table_occurrences"],
-                texts["table_manage"],
-                texts["table_delete"],
-            ]
+    df = pd.DataFrame(
+        table_rows,
+        columns=[
+            texts["table_token"],
+            texts["table_occurrences"],
+            texts["table_manage"],
+            texts["table_delete"],
         ],
-        hide_index=True,
     )
+    st.dataframe(df, hide_index=True)
 
     # Bulk operation buttons
     bulk_cols = st.columns(2)
