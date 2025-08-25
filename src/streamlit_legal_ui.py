@@ -1,6 +1,12 @@
 import streamlit as st
 from typing import Dict, List, Any
 
+from src.variant_management_ui import (
+    VariantManager,
+    display_entity_group_compact,
+    display_variant_management,
+)
+
 
 def display_legal_dashboard(
     analysis: Dict[str, Any],
@@ -42,35 +48,26 @@ def display_legal_dashboard(
     action_col2.button("\ud83d\udce4 Exporter")
 
 
-def display_legal_entity_manager(groups: Dict[str, List[Dict[str, Any]]]) -> None:
-    """Display and manage entities grouped by legal roles.
+def display_legal_entity_manager(groups: List[Dict[str, Any]]) -> None:
+    """Display and manage entity groups and their variants."""
 
-    Parameters
-    ----------
-    groups:
-        Mapping of roles (Parties, Avocats, Tiers, R\u00e9f\u00e9rences) to a list
-        of entity dictionaries. Each entity can contain the keys ``name`` and
-        ``category``.
-    """
-    st.header("\ud83d\udcdd Gestionnaire d'entit\u00e9s")
+    st.header("\ud83d\uddc3\ufe0f Gestionnaire d'entit\u00e9s")
+    manager = VariantManager(groups)
 
-    roles = ["Parties", "Avocats", "Tiers", "R\u00e9f\u00e9rences"]
-    for role in roles:
-        entities = groups.get(role, [])
-        with st.expander(role):
-            if not entities:
-                st.write("Aucune entit\u00e9")
-            for idx, entity in enumerate(entities):
-                col_a, col_b = st.columns([3, 1])
-                col_a.text_input(
-                    "Nom", entity.get("name", ""), key=f"{role}_{idx}_name"
-                )
-                approved = col_b.checkbox(
-                    "Approuv\u00e9", value=entity.get("approved", False), key=f"{role}_{idx}_ok"
-                )
-                entity["approved"] = approved
-            if entities:
-                if st.button(f"Fusionner les variantes - {role}"):
-                    st.success("Variantes fusionn\u00e9es")
-                if st.button(f"Exporter le rapport - {role}"):
-                    st.success("Rapport de tra\u00e7abilit\u00e9 export\u00e9")
+    for group in list(manager.groups.values()):
+        display_entity_group_compact(group)
+        if st.session_state.get(f"show_details_{group['id']}"):
+            display_variant_management(group, manager)
+            if st.button("\u2b05\ufe0f Retour", key=f"back_{group['id']}"):
+                st.session_state[f"show_details_{group['id']}"] = False
+                st.experimental_rerun()
+            st.write("---")
+
+    delete_id = st.session_state.get("delete_group")
+    if delete_id in manager.groups:
+        del manager.groups[delete_id]
+        st.session_state.pop("delete_group", None)
+        groups[:] = list(manager.groups.values())
+        st.experimental_rerun()
+
+    groups[:] = list(manager.groups.values())
