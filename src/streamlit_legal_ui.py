@@ -7,6 +7,7 @@ from src.variant_manager_ui import (
     display_entity_group_compact,
     display_variant_management,
 )
+from src.group_ui_utils import filter_groups, mark_groups_for_management, delete_groups
 from src.entity_manager import EntityManager
 
 
@@ -62,11 +63,7 @@ def display_legal_entity_manager(
     # Search field to filter groups by token
     search_term = st.text_input("Rechercher un groupe", "").lower()
 
-    filtered_groups = {
-        gid: g
-        for gid, g in manager.groups.items()
-        if search_term in g.get("token", "").lower()
-    }
+    filtered_groups = filter_groups(manager.groups, search_term)
 
     # Header for the table
     header_cols = st.columns([3, 2, 1, 1])
@@ -111,19 +108,11 @@ def display_legal_entity_manager(
     # Bulk operation buttons
     bulk_cols = st.columns(2)
     if bulk_cols[0].button("Gérer la sélection", disabled=not selected_manage):
-        for gid in selected_manage:
-            st.session_state[f"show_details_{gid}"] = True
-            st.session_state[f"manage_{gid}"] = False
-            st.session_state[f"delete_{gid}"] = False
+        mark_groups_for_management(st.session_state, selected_manage)
         st.rerun()
 
     if bulk_cols[1].button("Supprimer la sélection", disabled=not selected_delete):
-        for gid in selected_delete:
-            manager.groups.pop(gid, None)
-            st.session_state.pop(f"manage_{gid}", None)
-            st.session_state.pop(f"delete_{gid}", None)
-            st.session_state.pop(f"show_details_{gid}", None)
-        groups[:] = list(manager.groups.values())
+        delete_groups(manager, groups, st.session_state, selected_delete)
         st.rerun()
 
     # Show variant management for selected groups
