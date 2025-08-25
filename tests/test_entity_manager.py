@@ -82,6 +82,93 @@ class TestGroupManagement(unittest.TestCase):
         self.assertEqual(org_group["total_occurrences"], 1)
         self.assertIn("Acme", org_group["variants"])
 
+    def test_get_entity_conflicts(self):
+        """Détection des conflits de chevauchement et de jeton."""
+
+        e1 = self.manager.add_entity(
+            {
+                "type": "PERSON",
+                "value": "Alice",
+                "start": 0,
+                "end": 5,
+                "replacement": "[PERSON_1]",
+            }
+        )
+        # Entité chevauchant la première
+        self.manager.add_entity(
+            {
+                "type": "PERSON",
+                "value": "Bob",
+                "start": 3,
+                "end": 8,
+                "replacement": "[PERSON_2]",
+            }
+        )
+        # Même valeur mais autre jeton
+        self.manager.add_entity(
+            {
+                "type": "PERSON",
+                "value": "Alice",
+                "start": 10,
+                "end": 15,
+                "replacement": "[PERSON_3]",
+            }
+        )
+
+        conflicts = self.manager.get_entity_conflicts()
+        overlap_conflicts = [c for c in conflicts if c["type"] == "overlap"]
+        token_conflicts = [c for c in conflicts if c["type"] == "token"]
+
+        self.assertEqual(len(overlap_conflicts), 1)
+        self.assertEqual(len(token_conflicts), 1)
+        self.assertEqual(token_conflicts[0]["value"], "Alice")
+        self.assertEqual(set(token_conflicts[0]["tokens"]), {"[PERSON_1]", "[PERSON_3]"})
+
+    def test_split_and_merge_and_reassign(self):
+        """Vérifie les helpers de résolution de conflits."""
+
+        e1 = self.manager.add_entity(
+            {
+                "type": "PERSON",
+                "value": "Alice",
+                "start": 0,
+                "end": 10,
+                "replacement": "[PERSON_1]",
+            }
+        )
+        e2 = self.manager.add_entity(
+            {
+                "type": "PERSON",
+                "value": "Bob",
+                "start": 11,
+                "end": 20,
+                "replacement": "[PERSON_2]",
+            }
+        )
+
+        # Split first entity into two parts
+        new_ids = self.manager.split_entity(
+            e1,
+            [
+                {"start": 0, "end": 5, "value": "Al"},
+                {"start": 5, "end": 10, "value": "ice"},
+            ],
+        )
+        self.assertEqual(len(new_ids), 2)
+        self.assertIsNone(self.manager.get_entity_by_id(e1))
+
+        # Merge groups by token
+        self.manager.merge_entity_groups("[PERSON_2]", "[PERSON_1]")
+        replacements = {e["replacement"] for e in self.manager.entities}
+        self.assertEqual(replacements, {"[PERSON_1]"})
+
+        # Reassign variant
+        self.manager.reassign_variant("ice", "[PERSON_1]", "[PERSON_3]")
+        rep_map = {e["value"]: e["replacement"] for e in self.manager.entities}
+        self.assertEqual(rep_map["ice"], "[PERSON_3]")
+        self.assertEqual(rep_map["Al"], "[PERSON_1]")
+        self.assertEqual(rep_map["Bob"], "[PERSON_1]")
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
