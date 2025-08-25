@@ -148,6 +148,7 @@ class EntityManager:
             group = grouped.setdefault(
                 group_id,
                 {
+                    "id": group_id,
                     "type": entity.get("type"),
                     "token": token,
                     "total_occurrences": 0,
