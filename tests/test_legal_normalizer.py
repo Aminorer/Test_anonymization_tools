@@ -29,6 +29,12 @@ class TestLegalEntityNormalizer(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.canonical, "jean de la fontaine")
 
+    def test_find_canonical_match_with_initial(self) -> None:
+        candidates = ["Jean Dupont", "Paul Durand"]
+        match = self.normalizer.find_canonical_match("J. Dupont", candidates)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.canonical, "jean dupont")
+
     def test_register_entity_variant(self) -> None:
         self.normalizer.register_entity_variant("Jean Dupont", "M. Jean Dupont")
         key = self.normalizer.normalize_person_name("Jean Dupont").canonical
