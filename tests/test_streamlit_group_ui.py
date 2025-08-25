@@ -42,7 +42,7 @@ class FakeColumn:
 class FakeStreamlit:
     def __init__(self, text_value="", multiselect_return=None, columns_sets=None):
         self.text_value = text_value
-        self.multiselect_return = multiselect_return or []
+        self.multiselect_return = multiselect_return
         self.columns_sets = columns_sets or []
         self.columns_index = 0
         self.session_state = {}
@@ -59,8 +59,9 @@ class FakeStreamlit:
     def text_input(self, *a, **k):
         return self.text_value
 
-    def multiselect(self, *a, **k):
-        return self.multiselect_return
+    def multiselect(self, label, options, default=None):
+        self.multiselect_last_default = default
+        return self.multiselect_return if self.multiselect_return is not None else default
 
     def selectbox(self, label, options, format_func=None, index=0):
         return options[index]
@@ -122,3 +123,22 @@ def test_delete_action_removes_group(monkeypatch):
     groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
     streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
     assert groups == []
+
+
+def test_filters_types_defaults_to_all(monkeypatch):
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn()],
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],
+        [
+            FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
+            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn()]])
+        ],
+    ]
+    st = FakeStreamlit(columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+    groups = [
+        {"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}
+    ]
+    streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
+    assert st.multiselect_last_default == ["PERSON"]
+    assert st.session_state["group_filters"]["types"] == ["PERSON"]
