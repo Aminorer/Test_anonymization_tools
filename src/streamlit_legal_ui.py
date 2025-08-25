@@ -76,35 +76,55 @@ def display_legal_entity_manager(
     header_cols[3].markdown("**Supprimer**")
 
     table_rows: List[Dict[str, Any]] = []
+    selected_manage: List[str] = []
+    selected_delete: List[str] = []
     for gid, group in filtered_groups.items():
         cols = st.columns([3, 2, 1, 1])
         token = group.get("token")
         occurrences = group.get("total_occurrences", 0)
         cols[0].write(token)
         cols[1].write(occurrences)
-        manage_clicked = cols[2].button("Gérer", key=f"manage_{gid}")
-        delete_clicked = cols[3].button("Supprimer", key=f"delete_{gid}")
+        manage_checked = cols[2].checkbox("", key=f"manage_{gid}")
+        delete_checked = cols[3].checkbox("", key=f"delete_{gid}")
+
+        if manage_checked:
+            selected_manage.append(gid)
+        if delete_checked:
+            selected_delete.append(gid)
 
         table_rows.append(
             {
                 "Token": token,
                 "Occurrence Count": occurrences,
-                "Manage": manage_clicked,
-                "Delete": delete_clicked,
+                "Manage": manage_checked,
+                "Delete": delete_checked,
                 "id": gid,
             }
         )
-
-        if manage_clicked:
-            st.session_state[f"show_details_{gid}"] = True
-        if delete_clicked:
-            st.session_state["delete_group"] = gid
 
     # Display the table for reference (non-interactive)
     st.dataframe(
         pd.DataFrame(table_rows)[["Token", "Occurrence Count", "Manage", "Delete"]],
         hide_index=True,
     )
+
+    # Bulk operation buttons
+    bulk_cols = st.columns(2)
+    if bulk_cols[0].button("Gérer la sélection", disabled=not selected_manage):
+        for gid in selected_manage:
+            st.session_state[f"show_details_{gid}"] = True
+            st.session_state[f"manage_{gid}"] = False
+            st.session_state[f"delete_{gid}"] = False
+        st.rerun()
+
+    if bulk_cols[1].button("Supprimer la sélection", disabled=not selected_delete):
+        for gid in selected_delete:
+            manager.groups.pop(gid, None)
+            st.session_state.pop(f"manage_{gid}", None)
+            st.session_state.pop(f"delete_{gid}", None)
+            st.session_state.pop(f"show_details_{gid}", None)
+        groups[:] = list(manager.groups.values())
+        st.rerun()
 
     # Show variant management for selected groups
     for group in list(manager.groups.values()):
@@ -114,12 +134,5 @@ def display_legal_entity_manager(
                 st.session_state[f"show_details_{group['id']}"] = False
                 st.rerun()
             st.write("---")
-
-    delete_id = st.session_state.get("delete_group")
-    if delete_id in manager.groups:
-        del manager.groups[delete_id]
-        st.session_state.pop("delete_group", None)
-        groups[:] = list(manager.groups.values())
-        st.rerun()
 
     groups[:] = list(manager.groups.values())
