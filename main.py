@@ -841,12 +841,15 @@ def display_entities_tab_advanced():
     """Onglet entités avec fonctionnalités avancées"""
     st.subheader("📝 Gestion des Entités")
     # Permettre de basculer entre la vue liste et groupée
+    if "entities_view_mode" not in st.session_state:
+        st.session_state.entities_view_mode = "Liste"
     view_mode = st.radio(
         "Mode d'affichage",
         ["Liste", "Groupée"],
-        key="entities_view_mode",
+        index=0 if st.session_state.entities_view_mode == "Liste" else 1,
         horizontal=True,
     )
+    st.session_state.entities_view_mode = view_mode
 
     if view_mode == "Groupée":
         grouped_entities = st.session_state.entity_manager.get_grouped_entities()
@@ -884,6 +887,23 @@ def display_entities_tab_advanced():
 
         if sort_desc:
             groups_list.sort(key=lambda x: x[1]["total_occurrences"], reverse=True)
+
+        unique_groups = len(groups_list)
+        total_occurrences = sum(
+            grp["total_occurrences"] for _, grp in groups_list
+        )
+        raw_count = len(st.session_state.entities)
+        reduction = (
+            (1 - unique_groups / raw_count) * 100 if raw_count else 0
+        )
+
+        mcol1, mcol2, mcol3 = st.columns(3)
+        with mcol1:
+            st.metric("Groupes uniques", unique_groups)
+        with mcol2:
+            st.metric("Occurrences totales", total_occurrences)
+        with mcol3:
+            st.metric("Réduction", f"{reduction:.1f}%")
 
         for gid, grp in groups_list:
             variants = grp.get("variants", {})
