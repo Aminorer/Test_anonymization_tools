@@ -21,7 +21,15 @@ class FakeDataFrame:
 
 
 fake_pandas = types.ModuleType("pandas")
-fake_pandas.DataFrame = lambda rows: FakeDataFrame(rows)
+
+
+def _fake_dataframe(rows, columns=None):
+    if columns is not None:
+        return FakeDataFrame([{c: row.get(c) for c in columns} for row in rows])
+    return FakeDataFrame(rows)
+
+
+fake_pandas.DataFrame = _fake_dataframe
 sys.modules.setdefault("pandas", fake_pandas)
 
 fake_streamlit_module = types.ModuleType("streamlit")
@@ -152,6 +160,18 @@ def test_search_filters_groups(monkeypatch, sample_groups):
     streamlit_legal_ui.display_legal_entity_manager(sample_groups, language=language)
     texts = locale.get_locale(language)
     assert [row[texts["table_token"]] for row in st_mock.captured_df.rows] == ["Beta"]
+
+
+def test_search_no_match_shows_no_rows(monkeypatch, sample_groups):
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
+        [FakeColumn(), FakeColumn()],  # bulk action row
+    ]
+    st_mock = FakeStreamlit(text_input_value="gamma", columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
+    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
+    assert st_mock.captured_df.rows == []
 
 
 def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
