@@ -1210,7 +1210,8 @@ def display_groups_tab_advanced():
             else:
                 st.warning("Veuillez renseigner un nom et sélectionner des entités.")
     
-    groups = list(st.session_state.entity_manager.get_grouped_entities().values())
+    grouped = st.session_state.entity_manager.get_grouped_entities()
+    groups = [{"id": gid, **data} for gid, data in grouped.items()]
     display_legal_entity_manager(
         groups, entity_manager=st.session_state.entity_manager, language="fr"
     )
