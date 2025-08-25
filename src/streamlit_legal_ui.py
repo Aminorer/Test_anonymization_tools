@@ -1,7 +1,7 @@
 import streamlit as st
 from typing import Dict, List, Any
 
-from src.variant_management_ui import (
+from src.variant_manager_ui import (
     VariantManager,
     display_entity_group_compact,
     display_variant_management,
