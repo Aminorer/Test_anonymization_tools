@@ -1211,54 +1211,104 @@ def display_groups_tab_advanced():
     
     # Affichage des groupes existants
     groups = st.session_state.entity_manager.groups
-    
+
     if groups:
         st.subheader(f"📁 Groupes Existants ({len(groups)})")
-        
-        for group in groups:
-            with st.expander(f"👥 {group['name']} ({len(group.get('entity_ids', []))} entités)"):
-                group_col1, group_col2 = st.columns([2, 1])
-                
-                with group_col1:
-                    st.write(f"**Description:** {group.get('description', 'Aucune description')}")
-                    st.write(f"**Créé le:** {group.get('created_at', 'Date inconnue')}")
-                    
-                    # Entités du groupe
-                    group_entities = st.session_state.entity_manager.get_entities_in_group(group['id'])
-                    if group_entities:
-                        st.write("**Entités dans ce groupe:**")
-                        for entity in group_entities:
-                            color = ENTITY_COLORS.get(entity['type'], "#6c757d")
-                            st.markdown(f"""
-                            <div style="margin: 5px 0; padding: 5px; border-left: 3px solid {color}; background: #f8f9fa;">
-                                <strong>{entity['type']}</strong>: {entity['value'][:50]}{'...' if len(entity['value']) > 50 else ''}
-                            </div>
-                            """, unsafe_allow_html=True)
-                    else:
-                        st.info("Aucune entité dans ce groupe")
-                
-                with group_col2:
-                    # Actions sur le groupe
-                    if st.button(f"✏️ Modifier", key=f"edit_group_{group['id']}"):
-                        st.session_state.editing_group = group['id']
-                    
-                    if st.button(f"🗑️ Supprimer", key=f"delete_group_{group['id']}"):
-                        st.session_state.entity_manager.delete_group(group['id'])
-                        st.success(f"Groupe '{group['name']}' supprimé!")
-                        st.rerun()
-                    
-                    # Statistiques du groupe
-                    if group_entities:
-                        entity_types = {}
-                        for entity in group_entities:
-                            entity_type = entity['type']
-                            entity_types[entity_type] = entity_types.get(entity_type, 0) + 1
-                        
-                        st.write("**Types:**")
-                        for entity_type, count in entity_types.items():
-                            st.write(f"• {entity_type}: {count}")
+
+        import pandas as pd
+
+        table_rows = []
+        for g in groups:
+            table_rows.append(
+                {
+                    "id": g["id"],
+                    "name": g["name"],
+                    "description": g.get("description", ""),
+                    "created_at": g.get("created_at", ""),
+                    "entities": len(g.get("entity_ids", [])),
+                    "Actions": "",
+                }
+            )
+
+        groups_df = pd.DataFrame(table_rows)
+
+        st.data_editor(
+            groups_df,
+            hide_index=True,
+            disabled=["id", "created_at", "entities", "Actions"],
+            use_container_width=True,
+            key="groups_table",
+        )
+
+        st.markdown("**Actions**")
+        for g in groups:
+            row_cols = st.columns([5, 1, 1])
+            row_cols[0].markdown(f"**{g['name']}**")
+            if row_cols[1].button("Modifier", key=f"edit_group_{g['id']}"):
+                st.session_state.editing_group = g["id"]
+            if row_cols[2].button("Supprimer", key=f"delete_group_{g['id']}"):
+                st.session_state.entity_manager.delete_group(g["id"])
+                st.success(f"Groupe '{g['name']}' supprimé!")
+                st.rerun()
     else:
         st.info("Aucun groupe créé. Utilisez le formulaire ci-dessus pour en créer un.")
+
+    # Formulaire d'édition de groupe
+    if st.session_state.get("editing_group"):
+        group_to_edit = st.session_state.entity_manager.get_group_by_id(
+            st.session_state.editing_group
+        )
+        if group_to_edit:
+            with st.expander("✏️ Modifier le groupe", expanded=True):
+                edit_name = st.text_input(
+                    "Nom du groupe:", value=group_to_edit["name"], key="edit_group_name"
+                )
+                edit_description = st.text_area(
+                    "Description:",
+                    value=group_to_edit.get("description", ""),
+                    key="edit_group_description",
+                )
+
+                available_entities = [
+                    f"{e['type']}: {e['value'][:30]}{'...' if len(e['value']) > 30 else ''}"
+                    for e in st.session_state.entities
+                ]
+                selected_display = []
+                for eid in group_to_edit.get("entity_ids", []):
+                    ent = st.session_state.entity_manager.get_entity_by_id(eid)
+                    if ent:
+                        selected_display.append(
+                            f"{ent['type']}: {ent['value'][:30]}{'...' if len(ent['value']) > 30 else ''}"
+                        )
+
+                selected_for_group = st.multiselect(
+                    "Entités à inclure:",
+                    available_entities,
+                    default=selected_display,
+                    key="entities_for_edit_group",
+                )
+
+                if st.button("💾 Enregistrer", type="primary", key="save_group_edit"):
+                    entity_ids = []
+                    for i, entity_display in enumerate(available_entities):
+                        if entity_display in selected_for_group:
+                            entity_ids.append(st.session_state.entities[i]["id"])
+
+                    st.session_state.entity_manager.update_group(
+                        group_to_edit["id"],
+                        {
+                            "name": edit_name,
+                            "description": edit_description,
+                            "entity_ids": entity_ids,
+                        },
+                    )
+                    st.success("Groupe mis à jour !")
+                    st.session_state.editing_group = None
+                    st.rerun()
+
+                if st.button("Annuler", key="cancel_group_edit"):
+                    st.session_state.editing_group = None
+                    st.rerun()
 
 def display_search_tab_advanced():
     """Onglet recherche avancée"""
