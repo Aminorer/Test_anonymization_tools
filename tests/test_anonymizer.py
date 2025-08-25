@@ -93,9 +93,12 @@ class TestRegexAnonymizer(unittest.TestCase):
 
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
-        dupont_entry = person_map.get("dupont")
+        full_dupont = person_map.get("jean dupont")
+        short_dupont = person_map.get("dupont")
         delatour_entry = person_map.get("de la tour")
-        self.assertEqual(dupont_entry["variants"], {"M. Jean Dûpont", "Dupont"})
+        self.assertEqual(full_dupont["variants"], {"M. Jean Dûpont"})
+        self.assertEqual(short_dupont["variants"], {"Dupont"})
+        self.assertNotEqual(full_dupont["token"], short_dupont["token"])
         self.assertEqual(delatour_entry["variants"], {"Mme de La Tour", "de La Tour"})
 
     def test_token_reuse_with_inclusion(self):
@@ -151,8 +154,11 @@ class TestRegexAnonymizer(unittest.TestCase):
 
         _, mapping = anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
-        entry = person_map.get("dupont")
-        self.assertEqual(entry["variants"], {"Jean Dupont", "J. Dupon"})
+        self.assertIn("jean dupont", person_map)
+        self.assertIn("j. dupon", person_map)
+        self.assertNotEqual(
+            person_map["jean dupont"]["token"], person_map["j. dupon"]["token"]
+        )
 
     def test_ssn_detection_valid_invalid(self):
         """Vérifie la détection des NIR valides et le rejet des invalides"""
@@ -249,10 +255,14 @@ class TestRegexAnonymizer(unittest.TestCase):
             Entity(id="2", type="PERSON", value="Jean Dupont", start=27, end=38),
         ]
         anonymized, mapping = self.anonymizer.anonymize_text(text, entities)
-        entry = mapping["PERSON"]["dupont"]
+        entry = mapping["PERSON"]["jean dupont"]
         self.assertEqual(entry["token"], "[PERSON_1]")
-        self.assertEqual(entry["canonical"], "dupont")
+        self.assertEqual(entry["canonical"], "jean dupont")
         self.assertEqual(entry["variants"], {"Dr Jean Dûpont", "Jean Dupont"})
+        self.assertEqual(
+            self.anonymizer.canonical_token_map["PERSON"]["jean dupont"],
+            "[PERSON_1]",
+        )
 
     def test_overlapping_entities(self):
         """Les entités se chevauchant sont remplacées de manière stable"""
