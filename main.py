@@ -107,6 +107,11 @@ try:
     )
     from src.config import ENTITY_COLORS, SUPPORTED_FORMATS, MAX_FILE_SIZE, ANONYMIZATION_PRESETS
     from src import perf_dashboard
+    from src.variant_manager_ui import (
+        VariantManager,
+        display_entity_group_compact,
+        display_variant_management,
+    )
 except ImportError as e:
     st.error(f"❌ Erreur d'import des modules: {e}")
     st.info("Vérifiez que tous les fichiers sont présents dans le dossier src/")
@@ -819,23 +824,56 @@ def display_entity_manager_advanced():
     if not st.session_state.entities:
         st.info("Aucune entité à gérer. Analysez d'abord un document.")
         return
-    
+
     st.header("🔧 Gestion Avancée des Entités")
-    
-    # Onglets améliorés
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 Entités", "👥 Groupes", "🔍 Recherche", "📊 Analyse"])
-    
-    with tab1:
-        display_entities_tab_advanced()
-    
-    with tab2:
-        display_groups_tab_advanced()
-    
-    with tab3:
-        display_search_tab_advanced()
-    
-    with tab4:
-        display_analysis_tab()
+
+    # Initialiser les groupes à partir des entités si nécessaire
+    if "variant_groups" not in st.session_state or not st.session_state.variant_groups:
+        grouped = st.session_state.entity_manager.get_grouped_entities()
+        groups = []
+        for key, data in grouped.items():
+            variants = []
+            all_positions = []
+            for v in data.get("variants", {}).values():
+                positions = [p.get("start", 0) for p in v.get("positions", [])]
+                variants.append({"value": v["value"], "count": v["count"], "positions": positions})
+                all_positions.extend(positions)
+            rep_val = variants[0]["value"] if variants else ""
+            try:
+                group_id = int(key.split("_")[-1])
+            except ValueError:
+                group_id = len(groups) + 1
+            groups.append(
+                {
+                    "id": group_id,
+                    "token": key,
+                    "representative_value": rep_val,
+                    "variants": variants,
+                    "total_occurrences": data.get("total_occurrences", 0),
+                    "positions": all_positions,
+                }
+            )
+        st.session_state.variant_groups = groups
+
+    manager = VariantManager(st.session_state.variant_groups)
+
+    for group in list(manager.groups.values()):
+        display_entity_group_compact(group)
+        if st.session_state.get(f"show_details_{group['id']}"):
+            display_variant_management(group, manager)
+            if st.button("⬅️ Retour", key=f"back_{group['id']}"):
+                st.session_state[f"show_details_{group['id']}"] = False
+                st.rerun()
+            st.write("---")
+
+    delete_id = st.session_state.get("delete_group")
+    if delete_id in manager.groups:
+        del manager.groups[delete_id]
+        st.session_state.pop("delete_group", None)
+        st.session_state.variant_groups = list(manager.groups.values())
+        st.rerun()
+
+    st.session_state.variant_groups = list(manager.groups.values())
 
 def display_entities_tab_advanced():
     """Onglet entités avec fonctionnalités avancées"""
