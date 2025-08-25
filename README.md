@@ -23,6 +23,7 @@ Cette application Streamlit permet d'anonymiser automatiquement les documents ju
 - [Spécification OpenAPI](docs/openapi.yaml)
 - [Dockerfile](Dockerfile)
 - [Script d'installation](scripts/setup.sh)
+- [Guide utilisateur](docs/user_guide.md)
 
 ## 🚀 **Installation et Démarrage Rapide**
 
@@ -192,6 +193,7 @@ Si `rapidfuzz` n'est pas disponible, installez `python-Levenshtein` et sélectio
 pip install python-Levenshtein
 ```
 
+
 ```python
 from src.anonymizer import RegexAnonymizer
 
@@ -201,6 +203,35 @@ anonymizer = RegexAnonymizer(algorithm="levenshtein")
 ```
 
 Dans ce mode, le calcul de similarité repose sur l'algorithme Levenshtein.
+
+## 📈 Tableau de bord juridique
+
+L'interface Streamlit expose un tableau de bord juridique affichant les
+entités détectées, les recommandations et les métriques de performance. Lancez
+l'application avec `python run.py` puis consultez le tableau de bord dans votre
+navigateur à l'adresse indiquée. Les métriques d’anonymisation peuvent être
+visualisées via `perf_dashboard.py`.
+
+## 🛠️ Configuration des templates
+
+Les modèles spécifiques au domaine sont définis dans
+`src/config.py` via la classe `LegalTemplates`. Chaque entrée précise les
+entités à anonymiser, celles à conserver et une liste de mots-clés pour la
+detection automatique. Ajoutez vos propres templates en étendant ce registre.
+
+## 🤖 Intégration Ollama
+
+`OllamaLegalAnalyzer` peut se connecter à un serveur Ollama local pour améliorer
+la classification des documents et la vérification de cohérence. Installez le
+serveur selon la documentation officielle puis lancez-le :
+
+```bash
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama serve
+```
+
+Vous pouvez spécifier l'URL et le modèle Ollama lors de la création de
+`EnhancedDocumentAnonymizer`.
 
 ### **Personnalisation des Entités**
 Modifiez `src/config.py` pour :
@@ -221,3 +252,4 @@ python benchmark.py --dataset data/benchmark --output rapport.csv
 
 Le script génère un fichier CSV contenant précision, rappel et F1 pour
 chaque type d'entité détecté.
+
