@@ -245,7 +245,7 @@ FRENCH_ENTITY_PATTERNS = {
     **ENTITY_PATTERNS,
 
     # Noms français avec titres de civilité
-    "PERSON_FR": r"\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*",  # Titres de civilité
+    "PERSON_FR": r"\b(?:M\.?|Mme\.?|Mlle\.?|Dr\.?|Prof\.?|Me\.?|Maître)\s+(?!(?:[Ll]e|[Ll]a|[Ll]es|[Pp]résident(?:e)?s?)\b)[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)*",  # Titres de civilité
 
     # Organisations françaises spécifiques
     "ORG_FR": r"\b(?:SARL|SAS|SA|SNC|EURL|SASU|SCI|SELARL|SELCA|SELAS|Association|Société|Entreprise|Cabinet|Étude|Bureau|Groupe|Fondation|Institut|Centre|Établissement)\s+[A-ZÀ-Ÿ][A-Za-zÀ-ÿ\s\-'&]+",  # Formes juridiques

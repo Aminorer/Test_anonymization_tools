@@ -55,6 +55,13 @@ class TestRegexAnonymizer(unittest.TestCase):
         date_entities = [e for e in entities if e.type == "DATE"]
         self.assertEqual(len(date_entities), 2)
 
+    def test_common_word_after_title_not_person(self):
+        """Expressions comme 'M. le Président' ne doivent pas être détectées"""
+        text = "M. le Président a parlé."
+        entities = self.anonymizer.detect_entities(text)
+        person_entities = [e for e in entities if e.type == "PERSON"]
+        self.assertEqual(len(person_entities), 0)
+
     def test_date_vs_article_number(self):
         """Les numéros d'article ne doivent pas être détectés comme des dates"""
         text = (
