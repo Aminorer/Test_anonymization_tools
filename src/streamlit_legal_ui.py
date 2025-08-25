@@ -9,6 +9,7 @@ from src.variant_manager_ui import (
 )
 from src.group_ui_utils import filter_groups, mark_groups_for_management, delete_groups
 from src.entity_manager import EntityManager
+from src.locale import get_locale, LOCALES
 
 
 def display_legal_dashboard(
@@ -54,27 +55,39 @@ def display_legal_dashboard(
 def display_legal_entity_manager(
     groups: List[Dict[str, Any]],
     entity_manager: Optional[EntityManager] = None,
+    language: Optional[str] = None,
 ) -> None:
     """Display and manage entity groups and their variants."""
 
-    st.header("\ud83d\uddc3\ufe0f Gestionnaire d'entit\u00e9s")
+    lang = language or st.session_state.get("language", "en")
+    if language is None:
+        lang = st.selectbox(
+            LOCALES[lang]["language_label"],
+            options=list(LOCALES.keys()),
+            format_func=lambda x: LOCALES[x]["language_name"],
+            index=list(LOCALES.keys()).index(lang),
+        )
+        st.session_state["language"] = lang
+    texts = get_locale(lang)
+
+    st.header(texts["entity_manager_header"])
     manager = VariantManager(groups)
 
     # Feedback after a successful deletion
     if st.session_state.pop("delete_success", False):
-        st.success("Groupe supprimé")
+        st.success(texts["delete_success"])
 
     # Search field to filter groups by token
-    search_term = st.text_input("Rechercher un groupe", "").lower()
+    search_term = st.text_input(texts["search_group"], "").lower()
 
     filtered_groups = filter_groups(manager.groups, search_term)
 
     # Header for the table
     header_cols = st.columns([3, 2, 1, 1])
-    header_cols[0].markdown("**Token**")
-    header_cols[1].markdown("**Occurrences**")
-    header_cols[2].markdown("**Gérer**")
-    header_cols[3].markdown("**Supprimer**")
+    header_cols[0].markdown(f"**{texts['table_token']}**")
+    header_cols[1].markdown(f"**{texts['table_occurrences']}**")
+    header_cols[2].markdown(f"**{texts['table_manage']}**")
+    header_cols[3].markdown(f"**{texts['table_delete']}**")
 
     table_rows: List[Dict[str, Any]] = []
     selected_manage: List[str] = []
@@ -95,35 +108,42 @@ def display_legal_entity_manager(
 
         table_rows.append(
             {
-                "Token": token,
-                "Occurrence Count": occurrences,
-                "Manage": manage_checked,
-                "Delete": delete_checked,
+                texts["table_token"]: token,
+                texts["table_occurrences"]: occurrences,
+                texts["table_manage"]: manage_checked,
+                texts["table_delete"]: delete_checked,
                 "id": gid,
             }
         )
 
     # Display the table for reference (non-interactive)
     st.dataframe(
-        pd.DataFrame(table_rows)[["Token", "Occurrence Count", "Manage", "Delete"]],
+        pd.DataFrame(table_rows)[
+            [
+                texts["table_token"],
+                texts["table_occurrences"],
+                texts["table_manage"],
+                texts["table_delete"],
+            ]
+        ],
         hide_index=True,
     )
 
     # Bulk operation buttons
     bulk_cols = st.columns(2)
-    if bulk_cols[0].button("Gérer la sélection", disabled=not selected_manage):
+    if bulk_cols[0].button(texts["manage_selection"], disabled=not selected_manage):
         mark_groups_for_management(st.session_state, selected_manage)
         st.rerun()
 
-    if bulk_cols[1].button("Supprimer la sélection", disabled=not selected_delete):
+    if bulk_cols[1].button(texts["delete_selection"], disabled=not selected_delete):
         st.session_state["show_delete_modal"] = True
         st.session_state["pending_delete"] = list(selected_delete)
 
     if st.session_state.get("show_delete_modal"):
-        with st.modal("Confirmer la suppression"):
-            st.write("Êtes-vous sûr de vouloir supprimer les groupes sélectionnés ?")
+        with st.modal(texts["confirm_delete"]):
+            st.write(texts["delete_confirmation_question"])
             modal_cols = st.columns(2)
-            if modal_cols[0].button("Supprimer", key="confirm_delete"):
+            if modal_cols[0].button(texts["delete_confirm"], key="confirm_delete"):
                 delete_groups(
                     manager,
                     groups,
@@ -133,7 +153,7 @@ def display_legal_entity_manager(
                 st.session_state["show_delete_modal"] = False
                 st.session_state["delete_success"] = True
                 st.rerun()
-            if modal_cols[1].button("Annuler", key="cancel_delete"):
+            if modal_cols[1].button(texts["delete_cancel"], key="cancel_delete"):
                 st.session_state["show_delete_modal"] = False
                 st.rerun()
 
@@ -141,7 +161,7 @@ def display_legal_entity_manager(
     for group in list(manager.groups.values()):
         if st.session_state.get(f"show_details_{group['id']}"):
             display_variant_management(group, manager)
-            if st.button("\u2b05\ufe0f Retour", key=f"back_{group['id']}"):
+            if st.button(texts["back"], key=f"back_{group['id']}"):
                 st.session_state[f"show_details_{group['id']}"] = False
                 st.rerun()
             st.write("---")
