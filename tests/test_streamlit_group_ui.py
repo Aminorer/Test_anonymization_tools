@@ -34,6 +34,8 @@ fake_streamlit_module.checkbox = lambda *a, **k: False
 fake_streamlit_module.write = lambda *a, **k: None
 fake_streamlit_module.session_state = {}
 fake_streamlit_module.rerun = lambda: None
+fake_streamlit_module.modal = lambda *a, **k: None
+fake_streamlit_module.success = lambda *a, **k: None
 sys.modules.setdefault("streamlit", fake_streamlit_module)
 
 # Create a minimal "src" package and load needed modules without executing src/__init__
@@ -111,6 +113,22 @@ class FakeStreamlit:
             return res
         return False
 
+    def modal(self, *args, **kwargs):
+        class _Modal:
+            def __init__(self, parent):
+                self.parent = parent
+
+            def __enter__(self):
+                return self.parent
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        return _Modal(self)
+
+    def success(self, *args, **kwargs) -> None:
+        pass
+
 
 @pytest.fixture
 def sample_groups():
@@ -139,6 +157,7 @@ def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
         [FakeColumn(), FakeColumn(), FakeColumn(checkbox=True), FakeColumn(checkbox=False)],
         [FakeColumn(), FakeColumn(), FakeColumn(checkbox=False), FakeColumn(checkbox=True)],
         [FakeColumn(button=True), FakeColumn(button=True)],  # bulk buttons pressed
+        [FakeColumn(button=True), FakeColumn(button=False)],  # modal confirm
     ]
     st_mock = FakeStreamlit(text_input_value="", columns_sets=cols, button_returns=[False])
     monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
@@ -146,3 +165,21 @@ def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
     streamlit_legal_ui.display_legal_entity_manager(sample_groups)
     assert st_mock.session_state["show_details_1"] is True
     assert sample_groups == [{"id": 1, "token": "Alpha", "total_occurrences": 2}]
+
+
+def test_delete_cancelled_keeps_groups(monkeypatch, sample_groups):
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group1
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(checkbox=True)],  # select delete for group2
+        [FakeColumn(button=False), FakeColumn(button=True)],  # bulk delete pressed only
+        [FakeColumn(button=False), FakeColumn(button=True)],  # modal cancel
+    ]
+    st_mock = FakeStreamlit(text_input_value="", columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
+    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups)
+    assert sample_groups == [
+        {"id": 1, "token": "Alpha", "total_occurrences": 2},
+        {"id": 2, "token": "Beta", "total_occurrences": 5},
+    ]

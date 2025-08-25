@@ -60,6 +60,10 @@ def display_legal_entity_manager(
     st.header("\ud83d\uddc3\ufe0f Gestionnaire d'entit\u00e9s")
     manager = VariantManager(groups)
 
+    # Feedback after a successful deletion
+    if st.session_state.pop("delete_success", False):
+        st.success("Groupe supprimé")
+
     # Search field to filter groups by token
     search_term = st.text_input("Rechercher un groupe", "").lower()
 
@@ -112,8 +116,26 @@ def display_legal_entity_manager(
         st.rerun()
 
     if bulk_cols[1].button("Supprimer la sélection", disabled=not selected_delete):
-        delete_groups(manager, groups, st.session_state, selected_delete)
-        st.rerun()
+        st.session_state["show_delete_modal"] = True
+        st.session_state["pending_delete"] = list(selected_delete)
+
+    if st.session_state.get("show_delete_modal"):
+        with st.modal("Confirmer la suppression"):
+            st.write("Êtes-vous sûr de vouloir supprimer les groupes sélectionnés ?")
+            modal_cols = st.columns(2)
+            if modal_cols[0].button("Supprimer", key="confirm_delete"):
+                delete_groups(
+                    manager,
+                    groups,
+                    st.session_state,
+                    st.session_state.get("pending_delete", []),
+                )
+                st.session_state["show_delete_modal"] = False
+                st.session_state["delete_success"] = True
+                st.rerun()
+            if modal_cols[1].button("Annuler", key="cancel_delete"):
+                st.session_state["show_delete_modal"] = False
+                st.rerun()
 
     # Show variant management for selected groups
     for group in list(manager.groups.values()):
