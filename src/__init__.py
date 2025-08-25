@@ -31,6 +31,7 @@ from .anonymizer import (
     DocumentProcessor,
     Entity
 )
+from .enhanced_anonymizer import EnhancedDocumentAnonymizer
 
 from .entity_manager import EntityManager
 from .legal_normalizer import LegalEntityNormalizer
@@ -39,7 +40,8 @@ from .config import (
     ENTITY_PATTERNS,
     ENTITY_COLORS,
     DEFAULT_REPLACEMENTS,
-    ANONYMIZATION_PRESETS
+    ANONYMIZATION_PRESETS,
+    LegalTemplates,
 )
 
 from .utils import (
@@ -54,12 +56,14 @@ from .ollama_analyzer import OllamaLegalAnalyzer
 __all__ = [
     # Classes principales
     "DocumentAnonymizer",
-    "RegexAnonymizer", 
+    "RegexAnonymizer",
     "AIAnonymizer",
     "DocumentProcessor",
     "EntityManager",
     "Entity",
     "LegalEntityNormalizer",
+    "EnhancedDocumentAnonymizer",
+    "LegalTemplates",
     
     # Configuration
     "ENTITY_PATTERNS",
