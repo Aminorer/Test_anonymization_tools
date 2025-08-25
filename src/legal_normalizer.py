@@ -96,7 +96,7 @@ class LegalEntityNormalizer:
         working = "".join(c for c in working if not unicodedata.combining(c))
         working = working.lower()
 
-        tokens = working.split()
+        tokens = re.findall(r"[\w'-]+", working)
         if not tokens:
             result = NormalizedPersonName("", [], "", [])
             self._cache[name] = result
@@ -223,8 +223,19 @@ class LegalEntityNormalizer:
         )
         best_score = 0.0
         best_candidate: Optional[str] = None
+        target_norm = self.normalize_person_name(name)
         for candidate in candidates_iter:
-            score = self.compute_similarity_score(name, candidate)
+            cand_norm = self.normalize_person_name(candidate)
+            if (
+                cand_norm.last_name
+                and cand_norm.last_name == target_norm.last_name
+                and cand_norm.first_names
+                and target_norm.first_names
+                and cand_norm.first_names[0][0] == target_norm.first_names[0][0]
+            ):
+                score = 1.0
+            else:
+                score = self.compute_similarity_score(name, candidate)
             if score > best_score:
                 best_score = score
                 best_candidate = candidate

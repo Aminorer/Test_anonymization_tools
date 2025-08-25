@@ -162,10 +162,29 @@ class TestRegexAnonymizer(unittest.TestCase):
         _, mapping = anonymizer.anonymize_text(text, entities)
         person_map = mapping.get("PERSON", {})
         self.assertIn("jean dupont", person_map)
-        self.assertIn("j. dupon", person_map)
+        self.assertIn("j dupon", person_map)
         self.assertNotEqual(
-            person_map["jean dupont"]["token"], person_map["j. dupon"]["token"]
+            person_map["jean dupont"]["token"], person_map["j dupon"]["token"]
         )
+
+    def test_person_token_reuse_with_initials(self):
+        """Les noms partageant l'initiale et le nom reçoivent le même jeton."""
+        anonymizer = RegexAnonymizer(score_cutoff=0.9)
+        text = "Jean Dupont parle à J. Dupont."
+        entities = [
+            Entity(id="1", type="PERSON", value="Jean Dupont", start=0, end=0),
+            Entity(id="2", type="PERSON", value="J. Dupont", start=0, end=0),
+        ]
+
+        anonymized, mapping = anonymizer.anonymize_text(text, entities)
+        person_map = mapping.get("PERSON", {})
+        self.assertIn("jean dupont", person_map)
+        self.assertEqual(len(person_map), 1)
+        entry = person_map["jean dupont"]
+        self.assertIn("Jean Dupont", entry["variants"])
+        self.assertIn("J. Dupont", entry["variants"])
+        token = entry["token"]
+        self.assertEqual(anonymized.count(token), 2)
 
     def test_ssn_detection_valid_invalid(self):
         """Vérifie la détection des NIR valides et le rejet des invalides"""
