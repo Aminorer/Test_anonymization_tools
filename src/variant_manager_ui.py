@@ -113,19 +113,63 @@ class VariantManager:
         """Delete an entire group."""
         self.groups.pop(group_id, None)
 
+    def create_new_group_from_variants(
+        self, selected_variants: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Create a new group composed of ``selected_variants``.
+
+        The new group receives a fresh identifier and is added to ``self.groups``.
+        """
+        new_id = max(self.groups) + 1 if self.groups else 1
+        new_group = {
+            "id": new_id,
+            "token": f"PERSON_{new_id}",
+            "representative_value": selected_variants[0]["value"],
+            "variants": selected_variants,
+            "total_occurrences": sum(v.get("count", 0) for v in selected_variants),
+            "positions": [
+                p for v in selected_variants for p in v.get("positions", [])
+            ],
+        }
+        self.groups[new_id] = new_group
+        return new_group
+
+    def get_variant_contexts(
+        self, variant_value: str, max_contexts: int = 3
+    ) -> List[str]:
+        """Return placeholder contexts for ``variant_value``.
+
+        In a real application, this would fetch actual occurrences from the
+        source document. The current implementation simply returns repeated
+        dummy contexts.
+        """
+        return [f"... {variant_value} ..."] * max_contexts
+
 
 # ----------------------------------------------------------------------
 # UI helpers
 # ----------------------------------------------------------------------
 
 def _suggest_short_form(value: str) -> Dict[str, str] | None:
-    """Return a simple suggestion for a variant if applicable."""
+    """Return a smart suggestion for simplifying ``value`` if possible."""
+
     titles = {"monsieur", "madame", "docteur"}
     words = value.split()
-    if words and words[0].lower() in titles:
-        without = " ".join(words[1:])
-        return {"action": f'Enlever le titre → "{without}"', "new_value": without}
-    return None
+    suggestions: List[Dict[str, str]] = []
+
+    if len(words) > 2 and words[0].lower() in {"débouter", "contacter", "rencontrer"}:
+        suggestions.append(
+            {"action": f'Garder seulement "{words[0]}"', "new_value": words[0]}
+        )
+
+    if any(t in value.lower() for t in titles):
+        without = " ".join(w for w in words if w.lower() not in titles)
+        if without != value:
+            suggestions.append(
+                {"action": f'Enlever le titre → "{without}"', "new_value": without}
+            )
+
+    return suggestions[0] if suggestions else None
 
 
 def display_entity_group_compact(group: Dict[str, Any]) -> None:
@@ -193,7 +237,8 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                         st.rerun()
             if st.button("🔍 Contextes", key=f"ctx_{group['id']}_{idx}"):
                 with st.expander("Contextes"):
-                    st.write(f"... {variant['value']} ...")
+                    for ctx in manager.get_variant_contexts(variant["value"]):
+                        st.write(ctx)
         with col4:
             if st.button("🗑️ Exclure", key=f"ex_{group['id']}_{idx}"):
                 manager.exclude_variant(group["id"], variant["value"])
@@ -208,8 +253,12 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
     if selected:
         st.write("---")
         st.write(f"💡 Actions sur {len(selected)} variante(s) sélectionnée(s) :")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
+            if st.button("📝 Nouveau groupe", key=f"new_group_{group['id']}"):
+                manager.create_new_group_from_variants(selected)
+                st.rerun()
+        with col2:
             target = st.selectbox(
                 "🔗 Fusionner avec",
                 [g["token"] for g in manager.groups.values() if g["id"] != group["id"]],
@@ -223,7 +272,7 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                     group["id"], target_id, [v["value"] for v in selected]
                 )
                 st.rerun()
-        with col2:
+        with col3:
             if st.button("🗑️ Supprimer sélection", key=f"del_sel_{group['id']}"):
                 for v in selected:
                     manager.exclude_variant(group["id"], v["value"])

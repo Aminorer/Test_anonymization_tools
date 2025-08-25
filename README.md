@@ -76,6 +76,7 @@ anonymizer-streamlit/
 │   ├── __init__.py
 │   ├── anonymizer.py      # Modules d'anonymisation
 │   ├── entity_manager.py  # Gestion des entités et groupes
+│   ├── variant_manager_ui.py  # Interface de gestion des variantes
 │   ├── config.py          # Configuration et constantes
 │   └── utils.py           # Fonctions utilitaires
 ├── temp/                  # Fichiers temporaires
