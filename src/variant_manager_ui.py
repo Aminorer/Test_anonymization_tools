@@ -158,7 +158,12 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
     for idx, variant in enumerate(group.get("variants", [])):
         col1, col2, col3, col4 = st.columns([1, 3, 2, 2])
         with col1:
-            if st.checkbox("", value=True, key=f"sel_{group['id']}_{idx}"):
+            if st.checkbox(
+                "Sélection",
+                value=True,
+                key=f"sel_{group['id']}_{idx}",
+                label_visibility="hidden",
+            ):
                 selected.append(variant)
         with col2:
             st.write(f"**{variant['value']}** ({variant.get('count', 0)} occ.)")
