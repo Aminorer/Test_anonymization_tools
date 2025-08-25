@@ -1,11 +1,13 @@
 import streamlit as st
-from typing import Dict, List, Any
+import pandas as pd
+from typing import Any, Dict, List, Optional
 
 from src.variant_manager_ui import (
     VariantManager,
     display_entity_group_compact,
     display_variant_management,
 )
+from src.entity_manager import EntityManager
 
 
 def display_legal_dashboard(
@@ -48,11 +50,46 @@ def display_legal_dashboard(
     action_col2.button("\ud83d\udce4 Exporter")
 
 
-def display_legal_entity_manager(groups: List[Dict[str, Any]]) -> None:
+def display_legal_entity_manager(
+    groups: List[Dict[str, Any]],
+    entity_manager: Optional[EntityManager] = None,
+) -> None:
     """Display and manage entity groups and their variants."""
 
     st.header("\ud83d\uddc3\ufe0f Gestionnaire d'entit\u00e9s")
     manager = VariantManager(groups)
+
+    table_data: List[Dict[str, Any]] = []
+    for gid, g in manager.groups.items():
+        table_data.append(
+            {
+                "Group": gid,
+                "Token": g.get("token"),
+                "Occurrences": g.get("total_occurrences", 0),
+                "Entities": ", ".join(v["value"] for v in g.get("variants", [])),
+            }
+        )
+
+    column_order = ["Token", "Occurrences", "Entities"]
+    edited_df = st.data_editor(
+        pd.DataFrame(table_data),
+        hide_index=True,
+        column_order=column_order,
+    )
+
+    for row in edited_df.to_dict(orient="records"):
+        gid = row["Group"]
+        new_token = row["Token"]
+        old_token = manager.groups[gid]["token"]
+        if new_token != old_token:
+            manager.groups[gid]["token"] = new_token
+            if entity_manager:
+                for entity in entity_manager.entities:
+                    if entity.get("replacement") == old_token:
+                        entity["replacement"] = new_token
+                entity_manager._invalidate_grouped_entities_cache()
+
+    groups[:] = list(manager.groups.values())
 
     for group in list(manager.groups.values()):
         display_entity_group_compact(group)
