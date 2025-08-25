@@ -109,7 +109,6 @@ try:
     from src import perf_dashboard
     from src.variant_manager_ui import (
         VariantManager,
-        display_entity_group_compact,
         display_variant_management,
     )
 except ImportError as e:
@@ -857,21 +856,46 @@ def display_entity_manager_advanced():
 
     manager = VariantManager(st.session_state.variant_groups)
 
-    for group in list(manager.groups.values()):
-        display_entity_group_compact(group)
-        if st.session_state.get(f"show_details_{group['id']}"):
-            display_variant_management(group, manager)
-            if st.button("⬅️ Retour", key=f"back_{group['id']}"):
-                st.session_state[f"show_details_{group['id']}"] = False
-                st.rerun()
-            st.write("---")
+    import pandas as pd
 
-    delete_id = st.session_state.get("delete_group")
-    if delete_id in manager.groups:
-        del manager.groups[delete_id]
-        st.session_state.pop("delete_group", None)
-        st.session_state.variant_groups = list(manager.groups.values())
-        st.rerun()
+    table_data = [
+        {
+            "ID": g["id"],
+            "Token": g["token"],
+            "Occurrence Count": g.get("total_occurrences", 0),
+            "Manage": False,
+            "Delete": False,
+        }
+        for g in manager.groups.values()
+    ]
+
+    search_query = st.text_input("🔍 Rechercher un groupe", "")
+    df = pd.DataFrame(table_data)
+    if search_query:
+        df = df[df["Token"].str.contains(search_query, case=False)]
+
+    df.sort_values("Occurrence Count", ascending=False, inplace=True)
+    edited = st.data_editor(
+        df,
+        hide_index=True,
+        column_order=["Token", "Occurrence Count", "Manage", "Delete"],
+        use_container_width=True,
+        key="entity_table",
+    )
+
+    for row in edited.itertuples():
+        gid = row.ID
+        if row.Delete:
+            manager.delete_group(gid)
+            st.session_state.variant_groups = list(manager.groups.values())
+            st.experimental_rerun()
+        if row.Manage and gid in manager.groups:
+            group = manager.groups[gid]
+            with st.expander(
+                f"Gestion - {group['token']} ({group.get('total_occurrences', 0)} occurrences)",
+                expanded=True,
+            ):
+                display_variant_management(group, manager)
 
     st.session_state.variant_groups = list(manager.groups.values())
 
