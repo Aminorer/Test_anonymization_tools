@@ -114,11 +114,11 @@ def display_variant_editor(
             if st.button("✅ Confirmer", key=f"conf_{group_id}_{variant_index}"):
                 manager.modify_variant(group_id, variant["value"], new_value)
                 st.session_state[key] = False
-                st.experimental_rerun()
+                st.rerun()
         with col2:
             if st.button("❌ Annuler", key=f"cancel_{group_id}_{variant_index}"):
                 st.session_state[key] = False
-                st.experimental_rerun()
+                st.rerun()
 
 
 def display_variant_management(group: Dict[str, Any], manager: VariantManager) -> None:
@@ -155,7 +155,7 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
         with col4:
             if st.button("🗑️ Exclure", key=f"exclude_{group['id']}_{i}"):
                 manager.exclude_variant(group["id"], variant["value"])
-                st.experimental_rerun()
+                st.rerun()
             suggestion = get_smart_suggestion(variant)
             if suggestion and st.button(
                 f"💡 {suggestion['action']}", key=f"suggest_{group['id']}_{i}"
@@ -163,7 +163,7 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                 manager.modify_variant(
                     group["id"], variant["value"], suggestion["new_value"]
                 )
-                st.experimental_rerun()
+                st.rerun()
 
         display_variant_editor(group["id"], i, variant, manager)
 
@@ -175,7 +175,7 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
         with col1:
             if st.button("📝 Nouveau groupe", key=f"new_group_{group['id']}"):
                 manager.create_new_group_from_variants(selected_variants)
-                st.experimental_rerun()
+                st.rerun()
 
         with col2:
             target = st.selectbox(
@@ -188,13 +188,13 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                     g["id"] for g in manager.groups.values() if g["token"] == target
                 ][0]
                 manager.groups[target_id]["variants"].extend(selected_variants)
-                st.experimental_rerun()
+                st.rerun()
 
         with col3:
             if st.button("🗑️ Supprimer sélection", key=f"del_sel_{group['id']}"):
                 for v in selected_variants:
                     manager.exclude_variant(group["id"], v["value"])
-                st.experimental_rerun()
+                st.rerun()
 
 
 def display_entity_group_compact(group: Dict[str, Any]) -> None:
