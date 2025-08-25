@@ -107,10 +107,6 @@ try:
     )
     from src.config import ENTITY_COLORS, SUPPORTED_FORMATS, MAX_FILE_SIZE, ANONYMIZATION_PRESETS
     from src import perf_dashboard
-    from src.variant_manager_ui import (
-        VariantManager,
-        display_variant_management,
-    )
 except ImportError as e:
     st.error(f"❌ Erreur d'import des modules: {e}")
     st.info("Vérifiez que tous les fichiers sont présents dans le dossier src/")
@@ -819,85 +815,32 @@ def display_results_advanced():
                 st.info(recommendation)
 
 def display_entity_manager_advanced():
-    """Interface avancée de gestion des entités"""
+    """Interface avancée de gestion des entités avec onglets"""
     if not st.session_state.entities:
         st.info("Aucune entité à gérer. Analysez d'abord un document.")
         return
 
     st.header("🔧 Gestion Avancée des Entités")
 
-    # Initialiser les groupes à partir des entités si nécessaire
-    if "variant_groups" not in st.session_state or not st.session_state.variant_groups:
-        grouped = st.session_state.entity_manager.get_grouped_entities()
-        groups = []
-        for key, data in grouped.items():
-            variants = []
-            all_positions = []
-            for v in data.get("variants", {}).values():
-                positions = [p.get("start", 0) for p in v.get("positions", [])]
-                variants.append({"value": v["value"], "count": v["count"], "positions": positions})
-                all_positions.extend(positions)
-            rep_val = variants[0]["value"] if variants else ""
-            try:
-                group_id = int(key.split("_")[-1])
-            except ValueError:
-                group_id = len(groups) + 1
-            groups.append(
-                {
-                    "id": group_id,
-                    "token": key,
-                    "representative_value": rep_val,
-                    "variants": variants,
-                    "total_occurrences": data.get("total_occurrences", 0),
-                    "positions": all_positions,
-                }
-            )
-        st.session_state.variant_groups = groups
+    # S'assurer que l'EntityManager est partagé entre les onglets
+    if "entity_manager" not in st.session_state:
+        st.session_state.entity_manager = EntityManager()
 
-    manager = VariantManager(st.session_state.variant_groups)
+    # Synchroniser les entités avec le gestionnaire
+    st.session_state.entity_manager.entities = st.session_state.entities
 
-    import pandas as pd
+    tabs = st.tabs(["Entités", "Groupes", "Recherche"])
 
-    table_data = [
-        {
-            "ID": g["id"],
-            "Token": g["token"],
-            "Occurrence Count": g.get("total_occurrences", 0),
-            "Manage": False,
-            "Delete": False,
-        }
-        for g in manager.groups.values()
-    ]
+    with tabs[0]:
+        display_entities_tab_advanced()
+    with tabs[1]:
+        display_groups_tab_advanced()
+    with tabs[2]:
+        display_search_tab_advanced()
 
-    search_query = st.text_input("🔍 Rechercher un groupe", "")
-    df = pd.DataFrame(table_data)
-    if search_query:
-        df = df[df["Token"].str.contains(search_query, case=False)]
-
-    df.sort_values("Occurrence Count", ascending=False, inplace=True)
-    edited = st.data_editor(
-        df,
-        hide_index=True,
-        column_order=["Token", "Occurrence Count", "Manage", "Delete"],
-        use_container_width=True,
-        key="entity_table",
-    )
-
-    for row in edited.itertuples():
-        gid = row.ID
-        if row.Delete:
-            manager.delete_group(gid)
-            st.session_state.variant_groups = list(manager.groups.values())
-            st.experimental_rerun()
-        if row.Manage and gid in manager.groups:
-            group = manager.groups[gid]
-            with st.expander(
-                f"Gestion - {group['token']} ({group.get('total_occurrences', 0)} occurrences)",
-                expanded=True,
-            ):
-                display_variant_management(group, manager)
-
-    st.session_state.variant_groups = list(manager.groups.values())
+    # Mettre à jour les listes partagées
+    st.session_state.entities = st.session_state.entity_manager.entities
+    st.session_state.groups = st.session_state.entity_manager.groups
 
 def display_entities_tab_advanced():
     """Onglet entités avec fonctionnalités avancées"""
