@@ -186,24 +186,24 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                     if st.button("✅", key=f"save_{group['id']}_{idx}"):
                         manager.update_variant(group["id"], variant["value"], new_val)
                         st.session_state[state_key] = False
-                        st.experimental_rerun()
+                        st.rerun()
                 with c2:
                     if st.button("❌", key=f"cancel_{group['id']}_{idx}"):
                         st.session_state[state_key] = False
-                        st.experimental_rerun()
+                        st.rerun()
             if st.button("🔍 Contextes", key=f"ctx_{group['id']}_{idx}"):
                 with st.expander("Contextes"):
                     st.write(f"... {variant['value']} ...")
         with col4:
             if st.button("🗑️ Exclure", key=f"ex_{group['id']}_{idx}"):
                 manager.exclude_variant(group["id"], variant["value"])
-                st.experimental_rerun()
+                st.rerun()
             suggestion = _suggest_short_form(variant["value"])
             if suggestion and st.button(
                 f"💡 {suggestion['action']}", key=f"sugg_{group['id']}_{idx}"
             ):
                 manager.update_variant(group["id"], variant["value"], suggestion["new_value"])
-                st.experimental_rerun()
+                st.rerun()
 
     if selected:
         st.write("---")
@@ -222,15 +222,15 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                 manager.merge_variants(
                     group["id"], target_id, [v["value"] for v in selected]
                 )
-                st.experimental_rerun()
+                st.rerun()
         with col2:
             if st.button("🗑️ Supprimer sélection", key=f"del_sel_{group['id']}"):
                 for v in selected:
                     manager.exclude_variant(group["id"], v["value"])
-                st.experimental_rerun()
+                st.rerun()
 
     st.write("---")
     new_variant = st.text_input("Ajouter une variante", key=f"new_var_{group['id']}")
     if st.button("Ajouter", key=f"add_var_{group['id']}") and new_variant:
         manager.add_variant(group["id"], new_variant, [])
-        st.experimental_rerun()
+        st.rerun()

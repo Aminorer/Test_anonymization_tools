@@ -97,7 +97,7 @@ def display_legal_entity_manager(
             display_variant_management(group, manager)
             if st.button("\u2b05\ufe0f Retour", key=f"back_{group['id']}"):
                 st.session_state[f"show_details_{group['id']}"] = False
-                st.experimental_rerun()
+                st.rerun()
             st.write("---")
 
     delete_id = st.session_state.get("delete_group")
@@ -105,6 +105,6 @@ def display_legal_entity_manager(
         del manager.groups[delete_id]
         st.session_state.pop("delete_group", None)
         groups[:] = list(manager.groups.values())
-        st.experimental_rerun()
+        st.rerun()
 
     groups[:] = list(manager.groups.values())
