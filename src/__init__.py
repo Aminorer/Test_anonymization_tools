@@ -47,8 +47,9 @@ from .utils import (
     save_upload_file,
     cleanup_temp_files,
     generate_anonymization_stats,
-    serialize_entity_mapping
+    serialize_entity_mapping,
 )
+from .ollama_analyzer import OllamaLegalAnalyzer
 
 __all__ = [
     # Classes principales
@@ -71,5 +72,6 @@ __all__ = [
     "save_upload_file",
     "cleanup_temp_files",
     "generate_anonymization_stats",
-    "serialize_entity_mapping"
+    "serialize_entity_mapping",
+    "OllamaLegalAnalyzer",
 ]
