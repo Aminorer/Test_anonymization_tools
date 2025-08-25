@@ -55,6 +55,7 @@ def _load(name):
 _load("variant_manager_ui")
 _load("group_ui_utils")
 _load("entity_manager")
+locale = _load("locale")
 streamlit_legal_ui = _load("streamlit_legal_ui")
 
 
@@ -147,8 +148,10 @@ def test_search_filters_groups(monkeypatch, sample_groups):
     st_mock = FakeStreamlit(text_input_value="beta", columns_sets=cols)
     monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
     monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups)
-    assert [row["Token"] for row in st_mock.captured_df.rows] == ["Beta"]
+    language = "en"
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language=language)
+    texts = locale.get_locale(language)
+    assert [row[texts["table_token"]] for row in st_mock.captured_df.rows] == ["Beta"]
 
 
 def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
@@ -162,7 +165,7 @@ def test_manage_and_delete_updates_state(monkeypatch, sample_groups):
     st_mock = FakeStreamlit(text_input_value="", columns_sets=cols, button_returns=[False])
     monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
     monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups)
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
     assert st_mock.session_state["show_details_1"] is True
     assert sample_groups == [{"id": 1, "token": "Alpha", "total_occurrences": 2}]
 
@@ -178,8 +181,29 @@ def test_delete_cancelled_keeps_groups(monkeypatch, sample_groups):
     st_mock = FakeStreamlit(text_input_value="", columns_sets=cols)
     monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
     monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
-    streamlit_legal_ui.display_legal_entity_manager(sample_groups)
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language="en")
     assert sample_groups == [
         {"id": 1, "token": "Alpha", "total_occurrences": 2},
         {"id": 2, "token": "Beta", "total_occurrences": 5},
     ]
+
+
+def test_french_column_headers(monkeypatch, sample_groups):
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group1
+        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # row for group2
+        [FakeColumn(), FakeColumn()],  # bulk action row
+    ]
+    st_mock = FakeStreamlit(text_input_value="", columns_sets=cols)
+    monkeypatch.setattr(streamlit_legal_ui, "st", st_mock)
+    monkeypatch.setattr(streamlit_legal_ui, "display_variant_management", lambda *a, **k: None)
+    language = "fr"
+    streamlit_legal_ui.display_legal_entity_manager(sample_groups, language=language)
+    texts = locale.get_locale(language)
+    assert set(st_mock.captured_df.rows[0].keys()) == {
+        texts["table_token"],
+        texts["table_occurrences"],
+        texts["table_manage"],
+        texts["table_delete"],
+    }
