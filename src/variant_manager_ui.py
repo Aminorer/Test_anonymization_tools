@@ -167,10 +167,12 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
             if dist_text:
                 st.caption(f"📊 {dist_text}")
         with col3:
-            edit_key = f"edit_{group['id']}_{idx}"
-            if st.button("✏️ Modifier", key=edit_key):
-                st.session_state[edit_key] = True
-            if st.session_state.get(edit_key):
+            btn_key = f"edit_btn_{group['id']}_{idx}"
+            state_key = f"edit_{group['id']}_{idx}"
+            st.session_state.setdefault(state_key, False)
+            if st.button("✏️ Modifier", key=btn_key):
+                st.session_state[state_key] = True
+            if st.session_state.get(state_key):
                 new_val = st.text_input(
                     "Nouvelle valeur", value=variant["value"], key=f"inp_{group['id']}_{idx}"
                 )
@@ -178,11 +180,11 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                 with c1:
                     if st.button("✅", key=f"save_{group['id']}_{idx}"):
                         manager.update_variant(group["id"], variant["value"], new_val)
-                        st.session_state[edit_key] = False
+                        st.session_state[state_key] = False
                         st.experimental_rerun()
                 with c2:
                     if st.button("❌", key=f"cancel_{group['id']}_{idx}"):
-                        st.session_state[edit_key] = False
+                        st.session_state[state_key] = False
                         st.experimental_rerun()
             if st.button("🔍 Contextes", key=f"ctx_{group['id']}_{idx}"):
                 with st.expander("Contextes"):
