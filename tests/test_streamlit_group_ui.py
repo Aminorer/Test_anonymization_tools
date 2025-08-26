@@ -10,8 +10,19 @@ sys.path.append(str(root_dir))
 sys.modules.setdefault("chardet", types.ModuleType("chardet"))
 sys.modules.setdefault("requests", types.ModuleType("requests"))
 sys.modules.setdefault("streamlit", types.ModuleType("streamlit"))
+
+
+class SimpleDataFrame:
+    def __init__(self, records):
+        self.records = records
+
+    def iterrows(self):
+        for i, row in enumerate(self.records):
+            yield i, row
+
+
 fake_pandas = types.ModuleType("pandas")
-fake_pandas.DataFrame = lambda *a, **k: None
+fake_pandas.DataFrame = SimpleDataFrame
 sys.modules.setdefault("pandas", fake_pandas)
 
 # minimal stubs
@@ -40,12 +51,22 @@ class FakeColumn:
         return result
 
 class FakeStreamlit:
-    def __init__(self, text_value="", multiselect_return=None, columns_sets=None):
+    def __init__(
+        self,
+        text_value="",
+        multiselect_return=None,
+        columns_sets=None,
+        data_editor_updates=None,
+    ):
         self.text_value = text_value
         self.multiselect_return = multiselect_return
         self.columns_sets = columns_sets or []
         self.columns_index = 0
         self.session_state = {}
+        self.data_editor_updates = data_editor_updates or {}
+        self.column_config = types.SimpleNamespace(
+            CheckboxColumn=lambda *a, **k: None
+        )
 
     def header(self, *a, **k):
         pass
@@ -85,40 +106,21 @@ class FakeStreamlit:
     def rerun(self):
         pass
 
+    def data_editor(self, df, **kwargs):
+        for idx, updates in self.data_editor_updates.items():
+            df.records[idx].update(updates)
+        return df
+
 # load module
 streamlit_legal_ui = types.ModuleType("streamlit_legal_ui")
 with open(root_dir / "src" / "streamlit_legal_ui.py", "r", encoding="utf-8") as f:
     exec(f.read(), streamlit_legal_ui.__dict__)
-
-
-def test_selection_updates_state(monkeypatch):
-    cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn()],  # pagination
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [
-            FakeColumn(checkbox=True), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
-            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn()]])
-        ],  # row
-        [FakeColumn(), FakeColumn(), FakeColumn()],  # bulk actions
-    ]
-    st = FakeStreamlit(columns_sets=cols)
-    monkeypatch.setattr(streamlit_legal_ui, "st", st)
-    groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
-    streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
-    assert st.session_state["selected_groups"] == [1]
-
-
 def test_delete_action_removes_group(monkeypatch):
     cols = [
         [FakeColumn(), FakeColumn(), FakeColumn()],  # pagination
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],  # header
-        [
-            FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
-            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn(button=True)]])
-        ],  # row with delete button
         [FakeColumn(button=True), FakeColumn(button=False)],  # delete modal confirm
     ]
-    st = FakeStreamlit(columns_sets=cols)
+    st = FakeStreamlit(columns_sets=cols, data_editor_updates={0: {"Delete": True}})
     monkeypatch.setattr(streamlit_legal_ui, "st", st)
     groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
     streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
@@ -126,14 +128,7 @@ def test_delete_action_removes_group(monkeypatch):
 
 
 def test_filters_types_defaults_to_all(monkeypatch):
-    cols = [
-        [FakeColumn(), FakeColumn(), FakeColumn()],
-        [FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn()],
-        [
-            FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(), FakeColumn(),
-            FakeColumn(columns_sets=[[FakeColumn(), FakeColumn(), FakeColumn()]])
-        ],
-    ]
+    cols = [[FakeColumn(), FakeColumn(), FakeColumn()]]
     st = FakeStreamlit(columns_sets=cols)
     monkeypatch.setattr(streamlit_legal_ui, "st", st)
     groups = [

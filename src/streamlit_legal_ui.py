@@ -80,7 +80,6 @@ def display_legal_entity_manager(
         unsafe_allow_html=True,
     )
 
-    st.session_state.setdefault("selected_groups", [])
     st.session_state.setdefault("group_filters", {"query": "", "types": []})
     st.session_state.setdefault(
         "table_sort", {"column": texts["table_token"], "ascending": True}
@@ -139,13 +138,10 @@ def display_legal_entity_manager(
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
         st.rerun()
 
-    selected = st.session_state["selected_groups"]
-
     df = pd.DataFrame(
         [
             {
                 "id": g.get("id"),
-                texts["table_select"]: g.get("id") in selected,
                 texts["table_token"]: g.get("token"),
                 texts["table_type"]: g.get("type"),
                 texts["table_occurrences"]: g.get("total_occurrences", 0),
@@ -162,7 +158,6 @@ def display_legal_entity_manager(
         df,
         hide_index=True,
         column_config={
-            texts["table_select"]: st.column_config.CheckboxColumn(required=False),
             texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
             texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
             texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
@@ -176,11 +171,8 @@ def display_legal_entity_manager(
         ],
     )
 
-    page_selected: List[str] = []
     for _, row in edited_df.iterrows():
         gid = row["id"]
-        if row[texts["table_select"]]:
-            page_selected.append(gid)
         if row[texts["action_edit"]]:
             st.session_state["editing_group"] = gid
         if row[texts["action_merge"]]:
@@ -192,14 +184,6 @@ def display_legal_entity_manager(
             else:
                 groups[:] = [g for g in groups if g.get("id") != gid]
             st.rerun()
-
-    for g in page_groups:
-        gid = g.get("id")
-        if gid in page_selected and gid not in selected:
-            selected.append(gid)
-        if gid not in page_selected and gid in selected:
-            selected.remove(gid)
-    st.session_state["selected_groups"] = selected
 
     if st.session_state.get("editing_group") is not None:
         gid = st.session_state["editing_group"]
@@ -277,17 +261,3 @@ def display_legal_entity_manager(
                 st.session_state["delete_group"] = None
                 st.rerun()
 
-    if st.session_state["selected_groups"]:
-        bulk = st.columns(3)
-        if bulk[0].button(texts["merge_selection"], disabled=len(selected) < 2):
-            st.session_state["merge_group"] = selected[0]
-        if bulk[1].button(texts["delete_selection"]):
-            if entity_manager:
-                for gid in list(selected):
-                    entity_manager.delete_group(gid)
-                groups[:] = list(entity_manager.get_grouped_entities().values())
-            else:
-                groups[:] = [g for g in groups if g.get("id") not in selected]
-            st.session_state["selected_groups"] = []
-            st.rerun()
-        bulk[2].button(texts["export_selection"], disabled=False)
