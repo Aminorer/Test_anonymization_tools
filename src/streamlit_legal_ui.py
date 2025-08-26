@@ -149,6 +149,9 @@ def display_legal_entity_manager(
                 texts["table_type"]: g.get("type"),
                 texts["table_occurrences"]: g.get("total_occurrences", 0),
                 texts["table_variants"]: ", ".join(g.get("variants", {}).keys()),
+                texts["action_edit"]: False,
+                texts["action_merge"]: False,
+                texts["action_delete"]: False,
             }
             for g in page_groups
         ]
@@ -159,6 +162,9 @@ def display_legal_entity_manager(
         hide_index=True,
         column_config={
             texts["table_select"]: st.column_config.CheckboxColumn(required=False),
+            texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
+            texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
+            texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
             "id": None,
         },
         disabled=[
@@ -169,11 +175,23 @@ def display_legal_entity_manager(
         ],
     )
 
-    page_selected = [
-        row["id"]
-        for _, row in edited_df.iterrows()
-        if row[texts["table_select"]]
-    ]
+    page_selected: List[str] = []
+    for _, row in edited_df.iterrows():
+        gid = row["id"]
+        if row[texts["table_select"]]:
+            page_selected.append(gid)
+        if row[texts["action_edit"]]:
+            st.session_state["editing_group"] = gid
+        if row[texts["action_merge"]]:
+            st.session_state["merge_group"] = gid
+        if row[texts["action_delete"]]:
+            if entity_manager:
+                entity_manager.delete_group(gid)
+                groups[:] = list(entity_manager.get_grouped_entities().values())
+            else:
+                groups[:] = [g for g in groups if g.get("id") != gid]
+            st.rerun()
+
     for g in page_groups:
         gid = g.get("id")
         if gid in page_selected and gid not in selected:
@@ -181,31 +199,6 @@ def display_legal_entity_manager(
         if gid not in page_selected and gid in selected:
             selected.remove(gid)
     st.session_state["selected_groups"] = selected
-
-    def _set_state(key: str, value: Any) -> None:
-        st.session_state[key] = value
-
-    for _, row in edited_df.iterrows():
-        gid = row["id"]
-        cols = st.columns(3)
-        cols[0].button(
-            texts["action_edit"],
-            key=f"edit_{gid}",
-            on_click=_set_state,
-            args=("editing_group", gid),
-        )
-        cols[1].button(
-            texts["action_merge"],
-            key=f"merge_{gid}",
-            on_click=_set_state,
-            args=("merge_group", gid),
-        )
-        cols[2].button(
-            texts["action_delete"],
-            key=f"del_{gid}",
-            on_click=_set_state,
-            args=("delete_group", gid),
-        )
 
     if st.session_state.get("editing_group") is not None:
         gid = st.session_state["editing_group"]
