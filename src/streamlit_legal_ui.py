@@ -157,11 +157,7 @@ def display_legal_entity_manager(
             {
                 "id": g.get("id"),
                 texts["table_token"]: g.get("token"),
-                texts["table_type"]: (
-                    f"<span class='type-badge type-badge-{g.get('type').lower()}'>{g.get('type')}</span>"
-                    if g.get("type")
-                    else ""
-                ),
+                texts["table_type"]: g.get("type", ""),
                 texts["table_occurrences"]: g.get("total_occurrences", 0),
                 texts["table_variants"]: ", ".join(
                     f"[{v}]" for v in g.get("variants", {})
@@ -181,7 +177,7 @@ def display_legal_entity_manager(
             texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
             texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
             texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
-            texts["table_type"]: st.column_config.TextColumn(html=True),
+            texts["table_type"]: st.column_config.TextColumn(),
             "id": None,
         },
         disabled=[
@@ -190,6 +186,15 @@ def display_legal_entity_manager(
             texts["table_occurrences"],
             texts["table_variants"],
         ],
+    )
+    badge_rows = "".join(
+        f"<tr><td>{row[texts['table_token']]}</td><td><span class='type-badge type-badge-{row[texts['table_type']].lower()}'>{row[texts['table_type']]}</span></td></tr>"
+        for _, row in edited_df.iterrows()
+        if row[texts["table_type"]]
+    )
+    st.markdown(
+        f"<table><thead><tr><th>{texts['table_token']}</th><th>{texts['table_type']}</th></tr></thead><tbody>{badge_rows}</tbody></table>",
+        unsafe_allow_html=True,
     )
 
     for _, row in edited_df.iterrows():
