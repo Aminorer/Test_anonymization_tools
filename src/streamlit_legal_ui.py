@@ -202,11 +202,12 @@ def display_legal_entity_manager(
             selected.discard(gid)
     st.session_state["selected_for_delete"] = selected
 
-    if st.button("Valider suppression", disabled=not selected):
+    confirm_cols = st.columns(2)
+    if confirm_cols[0].button("Valider suppression", disabled=not selected):
         ids_to_delete = st.session_state["selected_for_delete"]
         if entity_manager:
             for gid in ids_to_delete:
-                entity_manager.delete_group(gid)
+                entity_manager.delete_group_by_token(gid)
             groups[:] = list(entity_manager.get_grouped_entities().values())
         else:
             groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
