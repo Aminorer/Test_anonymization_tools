@@ -138,50 +138,74 @@ def display_legal_entity_manager(
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
         st.rerun()
 
-    header_cols = st.columns([0.5, 2, 1, 1, 2, 2])
-    header_cols[0].markdown(f"**{texts['table_select']}**")
-    header_cols[1].markdown(f"**{texts['table_token']}**")
-    header_cols[2].markdown(f" **{texts['table_type']}**")
-    header_cols[3].markdown(f"**{texts['table_occurrences']}**")
-    header_cols[4].markdown(f"**{texts['table_variants']}**")
-    header_cols[5].markdown(f"**{texts['table_actions']}**")
-
     selected = st.session_state["selected_groups"]
 
+    df = pd.DataFrame(
+        [
+            {
+                "id": g.get("id"),
+                texts["table_select"]: g.get("id") in selected,
+                texts["table_token"]: g.get("token"),
+                texts["table_type"]: g.get("type"),
+                texts["table_occurrences"]: g.get("total_occurrences", 0),
+                texts["table_variants"]: ", ".join(g.get("variants", {}).keys()),
+            }
+            for g in page_groups
+        ]
+    )
+
+    edited_df = st.data_editor(
+        df,
+        hide_index=True,
+        column_config={
+            texts["table_select"]: st.column_config.CheckboxColumn(required=False),
+            "id": None,
+        },
+        disabled=[
+            texts["table_token"],
+            texts["table_type"],
+            texts["table_occurrences"],
+            texts["table_variants"],
+        ],
+    )
+
+    page_selected = [
+        row["id"]
+        for _, row in edited_df.iterrows()
+        if row[texts["table_select"]]
+    ]
     for g in page_groups:
         gid = g.get("id")
-        cols = st.columns([0.5, 2, 1, 1, 2, 2])
-        checked = cols[0].checkbox(
-            "Sélectionner",
-            value=gid in selected,
-            key=f"sel_{gid}",
-            label_visibility="collapsed",
-        )
-        if checked and gid not in selected:
+        if gid in page_selected and gid not in selected:
             selected.append(gid)
-        if not checked and gid in selected:
+        if gid not in page_selected and gid in selected:
             selected.remove(gid)
-
-        token_html = f"<span class='token-badge'>{g.get('token')}</span>"
-        type_color = ENTITY_COLORS.get(g.get("type"), "#999999")
-        type_html = (
-            f"<span class='token-badge' style='background-color:{type_color}'>"
-            f"{g.get('type')}</span>"
-        )
-        cols[1].markdown(token_html, unsafe_allow_html=True)
-        cols[2].markdown(type_html, unsafe_allow_html=True)
-        cols[3].write(g.get("total_occurrences", 0))
-        cols[4].write(", ".join(g.get("variants", {}).keys()))
-
-        act_cols = cols[5].columns(3)
-        if act_cols[0].button(texts["action_edit"], key=f"edit_{gid}"):
-            st.session_state["editing_group"] = gid
-        if act_cols[1].button(texts["action_merge"], key=f"merge_{gid}"):
-            st.session_state["merge_group"] = gid
-        if act_cols[2].button(texts["action_delete"], key=f"del_{gid}"):
-            st.session_state["delete_group"] = gid
-
     st.session_state["selected_groups"] = selected
+
+    def _set_state(key: str, value: Any) -> None:
+        st.session_state[key] = value
+
+    for _, row in edited_df.iterrows():
+        gid = row["id"]
+        cols = st.columns(3)
+        cols[0].button(
+            texts["action_edit"],
+            key=f"edit_{gid}",
+            on_click=_set_state,
+            args=("editing_group", gid),
+        )
+        cols[1].button(
+            texts["action_merge"],
+            key=f"merge_{gid}",
+            on_click=_set_state,
+            args=("merge_group", gid),
+        )
+        cols[2].button(
+            texts["action_delete"],
+            key=f"del_{gid}",
+            on_click=_set_state,
+            args=("delete_group", gid),
+        )
 
     if st.session_state.get("editing_group") is not None:
         gid = st.session_state["editing_group"]
