@@ -65,7 +65,8 @@ class FakeStreamlit:
         self.session_state = {}
         self.data_editor_updates = data_editor_updates or {}
         self.column_config = types.SimpleNamespace(
-            CheckboxColumn=lambda *a, **k: None
+            CheckboxColumn=lambda *a, **k: None,
+            TextColumn=lambda *a, **k: None,
         )
 
     def header(self, *a, **k):
