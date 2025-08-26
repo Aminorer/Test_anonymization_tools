@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 from typing import Any, Dict, List, Optional
 
 from src.entity_manager import EntityManager
@@ -148,7 +149,7 @@ def display_legal_entity_manager(
                 texts["table_token"]: g.get("token"),
                 texts["table_type"]: g.get("type"),
                 texts["table_occurrences"]: g.get("total_occurrences", 0),
-                texts["table_variants"]: ", ".join(g.get("variants", {}).keys()),
+                texts["table_variants"]: ", ".join(f"[{v}]" for v in g.get("variants", {})),
                 texts["action_edit"]: False,
                 texts["action_merge"]: False,
                 texts["action_delete"]: False,
@@ -210,14 +211,15 @@ def display_legal_entity_manager(
                 new_type = st.text_input(texts["table_type"], group.get("type", ""))
                 variants_str = st.text_area(
                     texts["table_variants"],
-                    ", ".join(group.get("variants", {}).keys()),
+                    ", ".join(f"[{v}]" for v in group.get("variants", {})),
                 )
                 if st.button("Save", key="save_edit"):
                     group["token"] = new_token
                     group["type"] = new_type
+                    variants = re.findall(r"\[(.*?)\]", variants_str)
                     group["variants"] = {
                         v.strip(): {"value": v.strip(), "count": 0, "positions": []}
-                        for v in variants_str.split(",")
+                        for v in variants
                         if v.strip()
                     }
                     if entity_manager:
