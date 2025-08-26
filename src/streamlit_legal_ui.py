@@ -99,6 +99,7 @@ def display_legal_entity_manager(
         "table_sort", {"column": texts["table_token"], "ascending": True}
     )
     st.session_state.setdefault("table_page", 0)
+    st.session_state.setdefault("selected_for_delete", set())
 
     filters = st.session_state["group_filters"]
     filters["query"] = st.text_input(texts["search_group"], filters.get("query", ""))
@@ -152,6 +153,7 @@ def display_legal_entity_manager(
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
         st.rerun()
 
+    selected = st.session_state["selected_for_delete"]
     df = pd.DataFrame(
         [
             {
@@ -164,7 +166,7 @@ def display_legal_entity_manager(
                 ),
                 texts["action_edit"]: False,
                 texts["action_merge"]: False,
-                texts["action_delete"]: False,
+                texts["action_delete"]: g.get("id") in selected,
             }
             for g in page_groups
         ]
@@ -187,6 +189,7 @@ def display_legal_entity_manager(
             texts["table_variants"],
         ],
     )
+    selected = st.session_state.get("selected_for_delete", set())
     for _, row in edited_df.iterrows():
         gid = row["id"]
         if row[texts["action_edit"]]:
@@ -194,12 +197,21 @@ def display_legal_entity_manager(
         if row[texts["action_merge"]]:
             st.session_state["merge_group"] = gid
         if row[texts["action_delete"]]:
-            if entity_manager:
+            selected.add(gid)
+        else:
+            selected.discard(gid)
+    st.session_state["selected_for_delete"] = selected
+
+    if st.button("Valider suppression", disabled=not selected):
+        ids_to_delete = st.session_state["selected_for_delete"]
+        if entity_manager:
+            for gid in ids_to_delete:
                 entity_manager.delete_group(gid)
-                groups[:] = list(entity_manager.get_grouped_entities().values())
-            else:
-                groups[:] = [g for g in groups if g.get("id") != gid]
-            st.rerun()
+            groups[:] = list(entity_manager.get_grouped_entities().values())
+        else:
+            groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
+        st.session_state["selected_for_delete"] = set()
+        st.rerun()
 
     if st.session_state.get("editing_group") is not None:
         gid = st.session_state["editing_group"]
@@ -258,22 +270,4 @@ def display_legal_entity_manager(
                 if st.button(texts["delete_cancel"], key="cancel_merge"):
                     st.session_state["merge_group"] = None
                     st.rerun()
-
-    if st.session_state.get("delete_group") is not None:
-        gid = st.session_state["delete_group"]
-        modal_ctx = st.modal if hasattr(st, "modal") else st.expander
-        with modal_ctx(texts["confirm_delete"]):
-            st.write(texts["delete_confirmation_question"])
-            dc = st.columns(2)
-            if dc[0].button(texts["delete_confirm"], key="confirm_del"):
-                if entity_manager:
-                    entity_manager.delete_group(gid)
-                    groups[:] = list(entity_manager.get_grouped_entities().values())
-                else:
-                    groups[:] = [g for g in groups if g.get("id") != gid]
-                st.session_state["delete_group"] = None
-                st.rerun()
-            if dc[1].button(texts["delete_cancel"], key="cancel_del"):
-                st.session_state["delete_group"] = None
-                st.rerun()
 
