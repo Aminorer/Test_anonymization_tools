@@ -1152,7 +1152,28 @@ def display_entities_tab_advanced():
         
         # Stocker les entités sélectionnées
         st.session_state.selected_entities = selected_entities
-        
+
+        if st.session_state.get("show_delete_confirmation"):
+            with st.expander("Confirmer la suppression", expanded=True):
+                for entity in st.session_state.selected_entities:
+                    st.write(f"- {entity['type']}: {entity['value']}")
+
+                confirm_col, cancel_col = st.columns(2)
+                with confirm_col:
+                    if st.button("✅ Confirmer", key="confirm_delete"):
+                        ids_to_delete = [e["id"] for e in st.session_state.selected_entities]
+                        for entity_id in ids_to_delete:
+                            st.session_state.entity_manager.delete_entity(entity_id)
+                        st.session_state.entities = [
+                            e for e in st.session_state.entities if e["id"] not in ids_to_delete
+                        ]
+                        st.session_state.show_delete_confirmation = False
+                        st.session_state.selected_entities = []
+                        st.rerun()
+                with cancel_col:
+                    if st.button("❌ Annuler", key="cancel_delete"):
+                        st.session_state.show_delete_confirmation = False
+
     else:
         st.info("Aucune entité ne correspond aux critères de filtrage.")
 
