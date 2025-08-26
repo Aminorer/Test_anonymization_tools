@@ -281,8 +281,8 @@ def display_legal_entity_manager(
                     gr["token"]: ", ".join(gr.get("variants", {}).keys())
                     for gr in groups
                 }
-                target = st.selectbox(
-                    "Target",
+                targets = st.multiselect(
+                    "Targets",
                     options,
                     format_func=lambda t: token_to_variants.get(t, t),
                 )
@@ -303,16 +303,21 @@ def display_legal_entity_manager(
                 new_token = ""
                 if choice == "custom":
                     new_token = st.text_input("Nouveau token", key="new_token")
-                if st.button(texts["action_merge"], key="confirm_merge"):
+                if st.button(texts["action_merge"], key="confirm_merge") and targets:
                     if entity_manager:
                         if choice == "target":
-                            entity_manager.merge_entity_groups(source["token"], target)
+                            final_token = targets[0]
+                            entity_manager.merge_entity_groups(source["token"], final_token)
+                            for tgt in targets[1:]:
+                                entity_manager.merge_entity_groups(tgt, final_token)
                         elif choice == "source":
-                            entity_manager.merge_entity_groups(target, source["token"])
+                            for tgt in targets:
+                                entity_manager.merge_entity_groups(tgt, source["token"])
                         else:
                             final = new_token or source["token"]
                             entity_manager.merge_entity_groups(source["token"], final)
-                            entity_manager.merge_entity_groups(target, final)
+                            for tgt in targets:
+                                entity_manager.merge_entity_groups(tgt, final)
                         groups[:] = list(entity_manager.get_grouped_entities().values())
                     st.session_state["merge_group"] = None
                 if st.button(texts["delete_cancel"], key="cancel_merge"):
