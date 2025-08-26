@@ -166,7 +166,7 @@ def display_legal_entity_manager(
     if pag_cols[2].button("➡️", disabled=page + 1 >= total_pages):
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
 
-    selected = st.session_state["selected_for_delete"]
+    selected = set(st.session_state.get("selected_for_delete", set()))
     df = pd.DataFrame(
         [
             {
@@ -187,6 +187,7 @@ def display_legal_entity_manager(
 
     edited_df = st.data_editor(
         df,
+        key="group_table_editor",
         hide_index=True,
         column_config={
             texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
@@ -202,7 +203,7 @@ def display_legal_entity_manager(
             texts["table_variants"],
         ],
     )
-    selected = st.session_state.get("selected_for_delete", set())
+    initial_selected = set(selected)
     for _, row in edited_df.iterrows():
         gid = row["id"]
         if row[texts["action_edit"]]:
@@ -213,7 +214,9 @@ def display_legal_entity_manager(
             selected.add(gid)
         else:
             selected.discard(gid)
-    st.session_state["selected_for_delete"] = selected
+    if selected != initial_selected:
+        st.session_state["selected_for_delete"] = selected
+        st.rerun()
 
     confirm_cols = st.columns(2)
     if confirm_cols[0].button("Valider suppression", disabled=not selected):
