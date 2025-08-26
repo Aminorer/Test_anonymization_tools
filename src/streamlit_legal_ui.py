@@ -151,7 +151,12 @@ def display_legal_entity_manager(
     for g in page_groups:
         gid = g.get("id")
         cols = st.columns([0.5, 2, 1, 1, 2, 2])
-        checked = cols[0].checkbox("", value=gid in selected, key=f"sel_{gid}")
+        checked = cols[0].checkbox(
+            "Sélectionner",
+            value=gid in selected,
+            key=f"sel_{gid}",
+            label_visibility="collapsed",
+        )
         if checked and gid not in selected:
             selected.append(gid)
         if not checked and gid in selected:
