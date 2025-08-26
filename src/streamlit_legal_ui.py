@@ -117,41 +117,54 @@ def display_legal_entity_manager(
     sort["ascending"] = st.radio("Order", ["asc", "desc"], index=0 if sort["ascending"] else 1) == "asc"
     st.session_state["table_sort"] = sort
 
-    def _match(g: Dict[str, Any]) -> bool:
-        q = filters["query"].lower()
-        if q and q not in g.get("token", "").lower():
-            return False
-        if filters["types"] and g.get("type") not in filters["types"]:
-            return False
-        return True
+    cache_decorator = getattr(st, "cache_data", lambda fn: fn)
 
-    filtered = [g for g in groups if _match(g)]
+    @cache_decorator
+    def _filter_and_paginate(
+        groups: List[Dict[str, Any]],
+        filters: Dict[str, Any],
+        sort: Dict[str, Any],
+        page: int,
+        texts: Dict[str, str],
+    ) -> Any:
+        def _match(g: Dict[str, Any]) -> bool:
+            q = filters["query"].lower()
+            if q and q not in g.get("token", "").lower():
+                return False
+            if filters["types"] and g.get("type") not in filters["types"]:
+                return False
+            return True
 
-    key_map = {
-        texts["table_token"]: lambda g: g.get("token", ""),
-        texts["table_type"]: lambda g: g.get("type", ""),
-        texts["table_occurrences"]: lambda g: g.get("total_occurrences", 0),
-    }
-    filtered.sort(
-        key=key_map.get(sort["column"], lambda g: g.get("token", "")),
-        reverse=not sort["ascending"],
+        filtered = [g for g in groups if _match(g)]
+
+        key_map = {
+            texts["table_token"]: lambda g: g.get("token", ""),
+            texts["table_type"]: lambda g: g.get("type", ""),
+            texts["table_occurrences"]: lambda g: g.get("total_occurrences", 0),
+        }
+        filtered.sort(
+            key=key_map.get(sort["column"], lambda g: g.get("token", "")),
+            reverse=not sort["ascending"],
+        )
+
+        per_page = 50
+        total_pages = max(1, (len(filtered) + per_page - 1) // per_page)
+        page = min(page, total_pages - 1)
+        start = page * per_page
+        page_groups = filtered[start : start + per_page]
+        return filtered, page_groups, total_pages, page
+
+    filtered, page_groups, total_pages, page = _filter_and_paginate(
+        groups, filters, sort, st.session_state["table_page"], texts
     )
-
-    PER_PAGE = 50
-    total_pages = max(1, (len(filtered) + PER_PAGE - 1) // PER_PAGE)
-    page = min(st.session_state["table_page"], total_pages - 1)
     st.session_state["table_page"] = page
-    start = page * PER_PAGE
-    page_groups = filtered[start : start + PER_PAGE]
 
     pag_cols = st.columns(3)
     if pag_cols[0].button("⬅️", disabled=page <= 0):
         st.session_state["table_page"] = max(0, page - 1)
-        st.rerun()
     pag_cols[1].write(f"Page {page + 1}/{total_pages}")
     if pag_cols[2].button("➡️", disabled=page + 1 >= total_pages):
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
-        st.rerun()
 
     selected = st.session_state["selected_for_delete"]
     df = pd.DataFrame(
@@ -247,10 +260,8 @@ def display_legal_entity_manager(
                         for v in group["variants"].keys():
                             entity_manager.update_token_variants(new_token, v)
                     st.session_state["editing_group"] = None
-                    st.rerun()
                 if st.button(texts["delete_cancel"], key="cancel_edit"):
                     st.session_state["editing_group"] = None
-                    st.rerun()
 
     if st.session_state.get("merge_group") is not None:
         gid = st.session_state["merge_group"]
@@ -267,8 +278,6 @@ def display_legal_entity_manager(
                         entity_manager.merge_entity_groups(source["token"], target)
                         groups[:] = list(entity_manager.get_grouped_entities().values())
                     st.session_state["merge_group"] = None
-                    st.rerun()
                 if st.button(texts["delete_cancel"], key="cancel_merge"):
                     st.session_state["merge_group"] = None
-                    st.rerun()
 
