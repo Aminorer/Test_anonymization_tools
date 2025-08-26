@@ -187,16 +187,6 @@ def display_legal_entity_manager(
             texts["table_variants"],
         ],
     )
-    badge_rows = "".join(
-        f"<tr><td>{row[texts['table_token']]}</td><td><span class='type-badge type-badge-{row[texts['table_type']].lower()}'>{row[texts['table_type']]}</span></td></tr>"
-        for _, row in edited_df.iterrows()
-        if row[texts["table_type"]]
-    )
-    st.markdown(
-        f"<table><thead><tr><th>{texts['table_token']}</th><th>{texts['table_type']}</th></tr></thead><tbody>{badge_rows}</tbody></table>",
-        unsafe_allow_html=True,
-    )
-
     for _, row in edited_df.iterrows():
         gid = row["id"]
         if row[texts["action_edit"]]:
