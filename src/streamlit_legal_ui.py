@@ -166,7 +166,7 @@ def display_legal_entity_manager(
     if pag_cols[2].button("➡️", disabled=page + 1 >= total_pages):
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
 
-    selected = set(st.session_state.get("selected_for_delete", set()))
+    selected = st.session_state.get("selected_for_delete", set()).copy()
     df = pd.DataFrame(
         [
             {
@@ -217,9 +217,9 @@ def display_legal_entity_manager(
     selected.difference_update(
         edited_df.loc[~edited_df[texts["action_delete"]], "id"]
     )
+    st.session_state["selected_for_delete"] = selected
 
     if selected != initial_selected:
-        st.session_state["selected_for_delete"] = selected
         st.rerun()
 
     confirm_cols = st.columns(2)
