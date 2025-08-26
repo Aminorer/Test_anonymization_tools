@@ -169,6 +169,17 @@ class TestGroupManagement(unittest.TestCase):
         self.assertEqual(rep_map["Al"], "[PERSON_1]")
         self.assertEqual(rep_map["Bob"], "[PERSON_1]")
 
+    def test_delete_group_by_token(self):
+        self.manager.add_entity({"type": "PERSON", "value": "Alice", "start": 0, "end": 5, "replacement": "[PERSON_1]"})
+        self.manager.add_entity({"type": "PERSON", "value": "Bob", "start": 6, "end": 9, "replacement": "[PERSON_1]"})
+        self.manager.add_entity({"type": "PERSON", "value": "Eve", "start": 10, "end": 13, "replacement": "[PERSON_2]"})
+        self.manager.get_grouped_entities()
+        deleted = self.manager.delete_group_by_token("PERSON_1")
+        self.assertEqual(deleted, 2)
+        self.assertEqual(len(self.manager.entities), 1)
+        self.assertEqual(self.manager.entities[0]["value"], "Eve")
+        self.assertIsNone(self.manager._grouped_entities_cache)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

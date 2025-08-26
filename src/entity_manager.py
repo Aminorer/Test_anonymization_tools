@@ -332,6 +332,36 @@ class EntityManager:
             # Errors removing group data are logged but not raised
             logging.error(f"Error deleting group: {str(e)}")
             return False
+
+    def delete_group_by_token(self, token_id: str) -> int:
+        """Delete all entities associated with a replacement token.
+
+        Args:
+            token_id: Identifier of the token without surrounding brackets.
+
+        Returns:
+            The number of entities deleted.
+        """
+
+        token = f"[{token_id}]"
+        to_delete = [e for e in self.entities if e.get("replacement") == token]
+        if not to_delete:
+            logging.warning(f"No entities found for token: {token_id}")
+            return 0
+
+        for entity in to_delete:
+            self._save_to_history("delete_entity", entity["id"], entity.copy())
+            self._remove_entity_from_all_groups(entity["id"])
+            logging.info(f"Entity deleted: {entity['id']}")
+
+        # Remove entities from list
+        self.entities = [e for e in self.entities if e.get("replacement") != token]
+
+        # Invalidate grouped cache since entities changed
+        self._invalidate_grouped_entities_cache()
+
+        logging.info(f"Group deleted by token: {token_id}")
+        return len(to_delete)
     
     def get_group_by_id(self, group_id: str) -> Optional[Dict[str, Any]]:
         """Récupérer un groupe par son ID"""

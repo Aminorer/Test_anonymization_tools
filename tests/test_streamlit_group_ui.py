@@ -131,8 +131,28 @@ def test_delete_action_removes_group(monkeypatch):
     assert groups == []
 
 
+def test_delete_action_uses_entity_manager(monkeypatch):
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn()],
+        [FakeColumn(button=True), FakeColumn(button=False)],
+    ]
+    st = FakeStreamlit(columns_sets=cols, data_editor_updates={0: {"Delete": True}})
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+    em = streamlit_legal_ui.EntityManager()
+    em.add_entity({"type": "PERSON", "value": "Alice", "start": 0, "end": 5, "replacement": "[Alpha]"})
+    em.add_entity({"type": "PERSON", "value": "Bob", "start": 6, "end": 9, "replacement": "[Beta]"})
+    groups = list(em.get_grouped_entities().values())
+    streamlit_legal_ui.display_legal_entity_manager(groups, entity_manager=em, language="en")
+    assert len(em.entities) == 1
+    assert em.entities[0]["replacement"] == "[Beta]"
+    assert groups == list(em.get_grouped_entities().values())
+
+
 def test_filters_types_defaults_to_all(monkeypatch):
-    cols = [[FakeColumn(), FakeColumn(), FakeColumn()]]
+    cols = [
+        [FakeColumn(), FakeColumn(), FakeColumn()],
+        [FakeColumn(), FakeColumn()],
+    ]
     st = FakeStreamlit(columns_sets=cols)
     monkeypatch.setattr(streamlit_legal_ui, "st", st)
     groups = [
