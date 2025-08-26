@@ -259,18 +259,72 @@ def display_variant_management(group: Dict[str, Any], manager: VariantManager) -
                 manager.create_new_group_from_variants(selected)
                 st.rerun()
         with col2:
+            options = [g["token"] for g in manager.groups.values() if g["id"] != group["id"]]
+            token_to_variants = {
+                g["token"]: ", ".join(v["value"] for v in g.get("variants", []))
+                for g in manager.groups.values()
+            }
             target = st.selectbox(
                 "🔗 Fusionner avec",
-                [g["token"] for g in manager.groups.values() if g["id"] != group["id"]],
+                options,
+                format_func=lambda t: token_to_variants.get(t, t),
                 key=f"merge_sel_{group['id']}"
             )
+            st.write(
+                "Variantes du groupe source : "
+                + ", ".join(v["value"] for v in group.get("variants", []))
+            )
+            choice = st.radio(
+                "Token à conserver",
+                ["source", "target", "custom"],
+                format_func=lambda x: {
+                    "source": "Conserver le token du groupe source",
+                    "target": "Conserver le token du groupe cible",
+                    "custom": "Créer un nouveau token",
+                }[x],
+                key=f"merge_choice_{group['id']}"
+            )
+            new_token = ""
+            if choice == "custom":
+                new_token = st.text_input(
+                    "Nouveau token", key=f"new_token_{group['id']}"
+                )
             if st.button("Fusionner", key=f"merge_btn_{group['id']}"):
                 target_id = [
                     g_id for g_id, g in manager.groups.items() if g["token"] == target
                 ][0]
-                manager.merge_variants(
-                    group["id"], target_id, [v["value"] for v in selected]
-                )
+                if choice == "target":
+                    manager.merge_variants(
+                        group["id"], target_id, [v["value"] for v in group.get("variants", [])]
+                    )
+                    manager.delete_group(group["id"])
+                elif choice == "source":
+                    manager.merge_variants(
+                        target_id,
+                        group["id"],
+                        [v["value"] for v in manager.groups[target_id].get("variants", [])],
+                    )
+                    manager.delete_group(target_id)
+                else:
+                    new_id = max(manager.groups) + 1 if manager.groups else 1
+                    combined = (
+                        group.get("variants", [])
+                        + manager.groups[target_id].get("variants", [])
+                    )
+                    positions = (
+                        group.get("positions", [])
+                        + manager.groups[target_id].get("positions", [])
+                    )
+                    manager.groups[new_id] = {
+                        "id": new_id,
+                        "token": new_token,
+                        "representative_value": combined[0]["value"] if combined else "",
+                        "variants": combined,
+                        "total_occurrences": sum(v.get("count", 0) for v in combined),
+                        "positions": positions,
+                    }
+                    manager.delete_group(group["id"])
+                    manager.delete_group(target_id)
                 st.rerun()
         with col3:
             if st.button("🗑️ Supprimer sélection", key=f"del_sel_{group['id']}"):

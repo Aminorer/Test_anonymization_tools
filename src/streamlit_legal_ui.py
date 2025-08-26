@@ -269,13 +269,43 @@ def display_legal_entity_manager(
         if source:
             modal_ctx = st.modal if hasattr(st, "modal") else st.expander
             with modal_ctx(texts["action_merge"]):
+                options = [gr["token"] for gr in groups if gr["id"] != gid]
+                token_to_variants = {
+                    gr["token"]: ", ".join(gr.get("variants", {}).keys())
+                    for gr in groups
+                }
                 target = st.selectbox(
                     "Target",
-                    [gr["token"] for gr in groups if gr["id"] != gid],
+                    options,
+                    format_func=lambda t: token_to_variants.get(t, t),
                 )
+                st.write(
+                    "Variantes du groupe source : "
+                    + ", ".join(source.get("variants", {}).keys())
+                )
+                choice = st.radio(
+                    "Token à conserver",
+                    ["source", "target", "custom"],
+                    format_func=lambda x: {
+                        "source": "Conserver le token du groupe source",
+                        "target": "Conserver le token du groupe cible",
+                        "custom": "Créer un nouveau token",
+                    }[x],
+                    key="merge_choice",
+                )
+                new_token = ""
+                if choice == "custom":
+                    new_token = st.text_input("Nouveau token", key="new_token")
                 if st.button(texts["action_merge"], key="confirm_merge"):
                     if entity_manager:
-                        entity_manager.merge_entity_groups(source["token"], target)
+                        if choice == "target":
+                            entity_manager.merge_entity_groups(source["token"], target)
+                        elif choice == "source":
+                            entity_manager.merge_entity_groups(target, source["token"])
+                        else:
+                            final = new_token or source["token"]
+                            entity_manager.merge_entity_groups(source["token"], final)
+                            entity_manager.merge_entity_groups(target, final)
                         groups[:] = list(entity_manager.get_grouped_entities().values())
                     st.session_state["merge_group"] = None
                 if st.button(texts["delete_cancel"], key="cancel_merge"):
