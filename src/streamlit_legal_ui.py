@@ -5,7 +5,16 @@ from typing import Any, Dict, List, Optional
 
 from src.entity_manager import EntityManager
 from src.locale import get_locale, LOCALES
-from src.config import ENTITY_COLORS
+
+
+TYPE_COLORS = {
+    "EMAIL": "#4285F4",
+    "PHONE": "#0F9D58",
+    "DATE": "#F4B400",
+    "PERSON": "#DB4437",
+    "ORG": "#AB47BC",
+    "IBAN": "#F4511E",
+}
 
 
 def display_legal_dashboard(
@@ -69,12 +78,17 @@ def display_legal_entity_manager(
 
     st.header(texts["entity_manager_header"])
 
+    type_styles = "\n".join(
+        f".type-badge-{t.lower()}{{background:{c};}}" for t, c in TYPE_COLORS.items()
+    )
     st.markdown(
-        """
+        f"""
         <style>
-        .group-table {width:100%;}
-        .token-badge{padding:2px 6px;border-radius:4px;color:#fff;background:#333;}
-        .action-button button{margin-right:4px;}
+        .group-table {{width:100%;}}
+        .token-badge{{padding:2px 6px;border-radius:4px;color:#fff;background:#333;}}
+        .type-badge {{ padding:2px 6px; border-radius:10px; color:#fff; }}
+        {type_styles}
+        .action-button button{{margin-right:4px;}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -143,9 +157,15 @@ def display_legal_entity_manager(
             {
                 "id": g.get("id"),
                 texts["table_token"]: g.get("token"),
-                texts["table_type"]: g.get("type"),
+                texts["table_type"]: (
+                    f"<span class='type-badge type-badge-{g.get('type').lower()}'>{g.get('type')}</span>"
+                    if g.get("type")
+                    else ""
+                ),
                 texts["table_occurrences"]: g.get("total_occurrences", 0),
-                texts["table_variants"]: ", ".join(f"[{v}]" for v in g.get("variants", {})),
+                texts["table_variants"]: ", ".join(
+                    f"[{v}]" for v in g.get("variants", {})
+                ),
                 texts["action_edit"]: False,
                 texts["action_merge"]: False,
                 texts["action_delete"]: False,
@@ -161,6 +181,7 @@ def display_legal_entity_manager(
             texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
             texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
             texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
+            texts["table_type"]: st.column_config.TextColumn(html=True),
             "id": None,
         },
         disabled=[
