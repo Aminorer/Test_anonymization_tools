@@ -187,7 +187,8 @@ def display_legal_entity_manager(
         gid = st.session_state["editing_group"]
         group = next((gr for gr in groups if gr.get("id") == gid), None)
         if group:
-            with st.modal(texts["action_edit"]):
+            modal_ctx = st.modal if hasattr(st, "modal") else st.expander
+            with modal_ctx(texts["action_edit"]):
                 new_token = st.text_input(texts["table_token"], group.get("token", ""))
                 new_type = st.text_input(texts["table_type"], group.get("type", ""))
                 variants_str = st.text_area(
@@ -223,7 +224,8 @@ def display_legal_entity_manager(
         gid = st.session_state["merge_group"]
         source = next((gr for gr in groups if gr.get("id") == gid), None)
         if source:
-            with st.modal(texts["action_merge"]):
+            modal_ctx = st.modal if hasattr(st, "modal") else st.expander
+            with modal_ctx(texts["action_merge"]):
                 target = st.selectbox(
                     "Target",
                     [gr["token"] for gr in groups if gr["id"] != gid],
@@ -240,7 +242,8 @@ def display_legal_entity_manager(
 
     if st.session_state.get("delete_group") is not None:
         gid = st.session_state["delete_group"]
-        with st.modal(texts["confirm_delete"]):
+        modal_ctx = st.modal if hasattr(st, "modal") else st.expander
+        with modal_ctx(texts["confirm_delete"]):
             st.write(texts["delete_confirmation_question"])
             dc = st.columns(2)
             if dc[0].button(texts["delete_confirm"], key="confirm_del"):
