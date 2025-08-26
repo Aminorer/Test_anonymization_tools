@@ -204,16 +204,20 @@ def display_legal_entity_manager(
         ],
     )
     initial_selected = set(selected)
-    for _, row in edited_df.iterrows():
-        gid = row["id"]
-        if row[texts["action_edit"]]:
-            st.session_state["editing_group"] = gid
-        if row[texts["action_merge"]]:
-            st.session_state["merge_group"] = gid
-        if row[texts["action_delete"]]:
-            selected.add(gid)
-        else:
-            selected.discard(gid)
+
+    edit_ids = edited_df.loc[edited_df[texts["action_edit"]], "id"]
+    if not edit_ids.empty:
+        st.session_state["editing_group"] = edit_ids.iloc[-1]
+
+    merge_ids = edited_df.loc[edited_df[texts["action_merge"]], "id"]
+    if not merge_ids.empty:
+        st.session_state["merge_group"] = merge_ids.iloc[-1]
+
+    selected.update(edited_df.loc[edited_df[texts["action_delete"]], "id"])
+    selected.difference_update(
+        edited_df.loc[~edited_df[texts["action_delete"]], "id"]
+    )
+
     if selected != initial_selected:
         st.session_state["selected_for_delete"] = selected
         st.rerun()
