@@ -64,9 +64,12 @@ class FakeStreamlit:
         self.columns_index = 0
         self.session_state = {}
         self.data_editor_updates = data_editor_updates or {}
+        def text_column(label=None, *, help=None, width=None, max_chars=None, validate=None):
+            return None
+
         self.column_config = types.SimpleNamespace(
             CheckboxColumn=lambda *a, **k: None,
-            TextColumn=lambda *a, **k: None,
+            TextColumn=text_column,
         )
 
     def header(self, *a, **k):
@@ -138,3 +141,8 @@ def test_filters_types_defaults_to_all(monkeypatch):
     streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
     assert st.multiselect_last_default == ["PERSON"]
     assert st.session_state["group_filters"]["types"] == ["PERSON"]
+
+
+def test_display_legal_entity_manager_rejects_extra_kwargs():
+    with pytest.raises(TypeError):
+        streamlit_legal_ui.display_legal_entity_manager([], language="en", unexpected=True)
