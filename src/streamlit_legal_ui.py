@@ -202,7 +202,7 @@ def display_legal_entity_manager(
                 texts["table_variants"],
             ],
         )
-        submitted = st.form_submit_button("Valider suppression")
+        submitted = st.form_submit_button("Valider")
 
     edit_ids = edited_df.loc[edited_df[texts["action_edit"]], "id"]
     if not edit_ids.empty:
