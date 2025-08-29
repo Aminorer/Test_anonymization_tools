@@ -12,6 +12,26 @@ sys.modules.setdefault("requests", types.ModuleType("requests"))
 sys.modules.setdefault("streamlit", types.ModuleType("streamlit"))
 
 
+class SimpleSeries(list):
+    @property
+    def empty(self):
+        return len(self) == 0
+
+    class _ILoc:
+        def __init__(self, data):
+            self.data = data
+
+        def __getitem__(self, idx):
+            return self.data[idx]
+
+    @property
+    def iloc(self):
+        return SimpleSeries._ILoc(self)
+
+    def tolist(self):
+        return list(self)
+
+
 class SimpleDataFrame:
     def __init__(self, records):
         self.records = records
@@ -19,6 +39,22 @@ class SimpleDataFrame:
     def iterrows(self):
         for i, row in enumerate(self.records):
             yield i, row
+
+    def __getitem__(self, key):
+        return SimpleSeries([row.get(key) for row in self.records])
+
+    @property
+    def loc(self):
+        class _Loc:
+            def __init__(self, df):
+                self.df = df
+
+            def __getitem__(self, key):
+                mask, column = key
+                filtered = [row for row, flag in zip(self.df.records, mask) if flag]
+                return SimpleSeries([row.get(column) for row in filtered])
+
+        return _Loc(self)
 
 
 fake_pandas = types.ModuleType("pandas")
@@ -57,6 +93,7 @@ class FakeStreamlit:
         multiselect_return=None,
         columns_sets=None,
         data_editor_updates=None,
+        form_submit=False,
     ):
         self.text_value = text_value
         self.multiselect_return = multiselect_return
@@ -64,6 +101,7 @@ class FakeStreamlit:
         self.columns_index = 0
         self.session_state = {}
         self.data_editor_updates = data_editor_updates or {}
+        self.form_submit = form_submit
         def text_column(label=None, *, help=None, width=None, max_chars=None, validate=None):
             return None
 
@@ -99,6 +137,17 @@ class FakeStreamlit:
         self.columns_index += 1
         return result
 
+    def form(self, *a, **k):
+        class _F:
+            def __enter__(self_inner):
+                return self
+            def __exit__(self_inner, exc_type, exc, tb):
+                return False
+        return _F()
+
+    def form_submit_button(self, label, disabled=False):
+        return self.form_submit and not disabled
+
     def modal(self, *a, **k):
         class _M:
             def __enter__(self_inner):
@@ -122,9 +171,12 @@ with open(root_dir / "src" / "streamlit_legal_ui.py", "r", encoding="utf-8") as 
 def test_delete_action_removes_group(monkeypatch):
     cols = [
         [FakeColumn(), FakeColumn(), FakeColumn()],  # pagination
-        [FakeColumn(button=True), FakeColumn(button=False)],  # delete modal confirm
     ]
-    st = FakeStreamlit(columns_sets=cols, data_editor_updates={0: {"Delete": True}})
+    st = FakeStreamlit(
+        columns_sets=cols,
+        data_editor_updates={0: {"Delete": True}},
+        form_submit=True,
+    )
     monkeypatch.setattr(streamlit_legal_ui, "st", st)
     groups = [{"id": 1, "token": "Alpha", "type": "PERSON", "total_occurrences": 1, "variants": {}}]
     streamlit_legal_ui.display_legal_entity_manager(groups, language="en")
@@ -134,9 +186,12 @@ def test_delete_action_removes_group(monkeypatch):
 def test_delete_action_uses_entity_manager(monkeypatch):
     cols = [
         [FakeColumn(), FakeColumn(), FakeColumn()],
-        [FakeColumn(button=True), FakeColumn(button=False)],
     ]
-    st = FakeStreamlit(columns_sets=cols, data_editor_updates={0: {"Delete": True}})
+    st = FakeStreamlit(
+        columns_sets=cols,
+        data_editor_updates={0: {"Delete": True}},
+        form_submit=True,
+    )
     monkeypatch.setattr(streamlit_legal_ui, "st", st)
     em = streamlit_legal_ui.EntityManager()
     em.add_entity({"type": "PERSON", "value": "Alice", "start": 0, "end": 5, "replacement": "[Alpha]"})
@@ -151,7 +206,6 @@ def test_delete_action_uses_entity_manager(monkeypatch):
 def test_filters_types_defaults_to_all(monkeypatch):
     cols = [
         [FakeColumn(), FakeColumn(), FakeColumn()],
-        [FakeColumn(), FakeColumn()],
     ]
     st = FakeStreamlit(columns_sets=cols)
     monkeypatch.setattr(streamlit_legal_ui, "st", st)

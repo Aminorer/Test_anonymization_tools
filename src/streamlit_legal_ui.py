@@ -99,7 +99,6 @@ def display_legal_entity_manager(
         "table_sort", {"column": texts["table_token"], "ascending": True}
     )
     st.session_state.setdefault("table_page", 0)
-    st.session_state.setdefault("selected_for_delete", set())
 
     filters = st.session_state["group_filters"]
     filters["query"] = st.text_input(texts["search_group"], filters.get("query", ""))
@@ -166,7 +165,6 @@ def display_legal_entity_manager(
     if pag_cols[2].button("➡️", disabled=page + 1 >= total_pages):
         st.session_state["table_page"] = min(total_pages - 1, page + 1)
 
-    selected = st.session_state.get("selected_for_delete", set()).copy()
     df = pd.DataFrame(
         [
             {
@@ -179,30 +177,35 @@ def display_legal_entity_manager(
                 ),
                 texts["action_edit"]: False,
                 texts["action_merge"]: False,
-                texts["action_delete"]: g.get("id") in selected,
+                texts["action_delete"]: False,
             }
             for g in page_groups
         ]
     )
 
-    edited_df = st.data_editor(
-        df,
-        key="group_table_editor",
-        hide_index=True,
-        column_config={
-            texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
-            texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
-            texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
-            texts["table_type"]: st.column_config.TextColumn(),
-            "id": None,
-        },
-        disabled=[
-            texts["table_token"],
-            texts["table_type"],
-            texts["table_occurrences"],
-            texts["table_variants"],
-        ],
-    )
+    with st.form("group_delete_form"):
+        edited_df = st.data_editor(
+            df,
+            key="group_table_editor",
+            hide_index=True,
+            column_config={
+                texts["action_edit"]: st.column_config.CheckboxColumn(required=False),
+                texts["action_merge"]: st.column_config.CheckboxColumn(required=False),
+                texts["action_delete"]: st.column_config.CheckboxColumn(required=False),
+                texts["table_type"]: st.column_config.TextColumn(),
+                "id": None,
+            },
+            disabled=[
+                texts["table_token"],
+                texts["table_type"],
+                texts["table_occurrences"],
+                texts["table_variants"],
+            ],
+        )
+        selected_ids = edited_df.loc[edited_df[texts["action_delete"]], "id"].tolist()
+        submitted = st.form_submit_button(
+            "Valider suppression", disabled=not selected_ids
+        )
 
     edit_ids = edited_df.loc[edited_df[texts["action_edit"]], "id"]
     if not edit_ids.empty:
@@ -212,22 +215,14 @@ def display_legal_entity_manager(
     if not merge_ids.empty:
         st.session_state["merge_group"] = merge_ids.iloc[-1]
 
-    selected.update(edited_df.loc[edited_df[texts["action_delete"]], "id"])
-    selected.difference_update(
-        edited_df.loc[~edited_df[texts["action_delete"]], "id"]
-    )
-    st.session_state["selected_for_delete"] = selected
-
-    confirm_cols = st.columns(2)
-    if confirm_cols[0].button("Valider suppression", disabled=not selected):
-        ids_to_delete = st.session_state["selected_for_delete"]
+    if submitted and selected_ids:
+        ids_to_delete = selected_ids
         if entity_manager:
             for gid in ids_to_delete:
                 entity_manager.delete_group_by_token(gid)
             groups[:] = list(entity_manager.get_grouped_entities().values())
         else:
             groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
-        st.session_state["selected_for_delete"] = set()
         st.rerun()
 
     if st.session_state.get("editing_group") is not None:
