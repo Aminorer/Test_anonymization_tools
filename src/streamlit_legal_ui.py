@@ -202,10 +202,7 @@ def display_legal_entity_manager(
                 texts["table_variants"],
             ],
         )
-        selected_ids = edited_df.loc[edited_df[texts["action_delete"]], "id"].tolist()
-        submitted = st.form_submit_button(
-            "Valider suppression", disabled=not selected_ids
-        )
+        submitted = st.form_submit_button("Valider suppression")
 
     edit_ids = edited_df.loc[edited_df[texts["action_edit"]], "id"]
     if not edit_ids.empty:
@@ -215,15 +212,19 @@ def display_legal_entity_manager(
     if not merge_ids.empty:
         st.session_state["merge_group"] = merge_ids.iloc[-1]
 
-    if submitted and selected_ids:
-        ids_to_delete = selected_ids
-        if entity_manager:
-            for gid in ids_to_delete:
-                entity_manager.delete_group_by_token(gid)
-            groups[:] = list(entity_manager.get_grouped_entities().values())
-        else:
-            groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
-        st.rerun()
+    if submitted:
+        selected_ids = edited_df.loc[
+            edited_df[texts["action_delete"]], "id"
+        ].tolist()
+        if selected_ids:
+            ids_to_delete = selected_ids
+            if entity_manager:
+                for gid in ids_to_delete:
+                    entity_manager.delete_group_by_token(gid)
+                groups[:] = list(entity_manager.get_grouped_entities().values())
+            else:
+                groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
+            st.rerun()
 
     if st.session_state.get("editing_group") is not None:
         gid = st.session_state["editing_group"]
