@@ -75,7 +75,6 @@ from pathlib import Path
 import json
 from datetime import datetime
 import time
-import uuid
 import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -1292,38 +1291,16 @@ def display_search_tab_advanced():
         )
         
         if results:
+            first_result = results[0]
             st.success(f"✅ {len(results)} occurrence(s) trouvée(s)")
-            
-            # Affichage des résultats
-            for i, result in enumerate(results[:10]):  # Limiter à 10 résultats
-                with st.expander(f"Résultat {i+1}: Ligne {result['line']}", expanded=i<3):
-                    # Texte avec surlignage
-                    highlighted_text = result['text'].replace(
-                        result['match'],
-                        f'<span class="highlight-text">{result["match"]}</span>'
-                    )
-                    
-                    st.markdown(f"**Contexte:** {highlighted_text}", unsafe_allow_html=True)
-                    st.write(f"**Position:** {result['start']}-{result['end']}")
-                    
-                    # Option pour créer une entité depuis la recherche
-                    if st.button(f"➕ Créer entité", key=f"create_entity_{i}"):
-                        new_entity = {
-                            "id": str(uuid.uuid4()),
-                            "type": "SEARCH_RESULT",
-                            "value": result['match'],
-                            "start": result['start'],
-                            "end": result['end'],
-                            "confidence": 1.0,
-                            "replacement": f"[TROUVÉ]"
-                        }
-                        st.session_state.entities.append(new_entity)
-                        st.session_state.entity_manager.add_entity(new_entity)
-                        st.success("Entité créée depuis la recherche!")
-                        st.rerun()
-            
-            if len(results) > 10:
-                st.info(f"Seuls les 10 premiers résultats sont affichés. Total: {len(results)}")
+
+            highlighted_text = first_result['text'].replace(
+                first_result['match'],
+                f'<span class="highlight-text">{first_result["match"]}</span>'
+            )
+
+            st.markdown(f"**Contexte:** {highlighted_text}", unsafe_allow_html=True)
+            st.write(f"**Position:** {first_result['start']}-{first_result['end']}")
         else:
             st.warning("Aucun résultat trouvé.")
 
