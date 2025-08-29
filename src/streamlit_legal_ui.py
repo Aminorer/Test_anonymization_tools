@@ -203,7 +203,6 @@ def display_legal_entity_manager(
             texts["table_variants"],
         ],
     )
-    initial_selected = set(selected)
 
     edit_ids = edited_df.loc[edited_df[texts["action_edit"]], "id"]
     if not edit_ids.empty:
@@ -218,9 +217,6 @@ def display_legal_entity_manager(
         edited_df.loc[~edited_df[texts["action_delete"]], "id"]
     )
     st.session_state["selected_for_delete"] = selected
-
-    if selected != initial_selected:
-        st.rerun()
 
     confirm_cols = st.columns(2)
     if confirm_cols[0].button("Valider suppression", disabled=not selected):
