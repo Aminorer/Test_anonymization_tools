@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timedelta
 import hashlib
 import json
-import chardet
+
+try:  # pragma: no cover - optional dependency
+    import chardet
+except ImportError:  # pragma: no cover - Streamlit Cloud minimal install
+    chardet = None  # type: ignore
 
 from .config import NAME_NORMALIZATION
 
@@ -735,13 +739,24 @@ def ensure_unicode(text: str) -> str:
         except UnicodeDecodeError:
             pass
 
-        # Tentative d'auto-détection d'encodage
-        detection = chardet.detect(text)
-        encoding = detection.get('encoding')
-        confidence = detection.get('confidence', 0)
-        if encoding and confidence > 0.5:
+        encoding = None
+        confidence = 0.0
+
+        if chardet is not None:
+            detection = chardet.detect(text)
+            encoding = detection.get('encoding')
+            confidence = detection.get('confidence', 0) or 0
+            if encoding and confidence > 0.5:
+                try:
+                    return text.decode(encoding)
+                except UnicodeDecodeError:
+                    pass
+        else:  # pragma: no cover - optional dependency missing
+            logging.warning(
+                "Chardet non disponible, utilisation d'un décodage latin-1 en secours"
+            )
             try:
-                return text.decode(encoding)
+                return text.decode('latin-1')
             except UnicodeDecodeError:
                 pass
 
