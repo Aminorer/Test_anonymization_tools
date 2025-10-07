@@ -27,12 +27,15 @@ class TestWorkflowIntegration(unittest.TestCase):
             result = anonymizer.process_document(docx_path, mode="regex")
             self.assertEqual(result["status"], "success")
 
-            export_path = anonymizer.export_anonymized_document(
+            export_result = anonymizer.export_anonymized_document(
                 docx_path, result["entities"], {"format": "txt"}
             )
-            self.assertTrue(os.path.exists(export_path))
+            output_path = export_result["output_path"]
+            temp_path = export_result["temp_path"]
+            self.assertTrue(os.path.exists(output_path))
+            self.assertTrue(os.path.exists(temp_path))
 
-            with open(export_path, "r", encoding="utf-8") as f:
+            with open(temp_path, "r", encoding="utf-8") as f:
                 content = f.read()
             self.assertIn("[EMAIL_1]", content)
             self.assertNotIn("workflow@example.com", content)
@@ -40,8 +43,10 @@ class TestWorkflowIntegration(unittest.TestCase):
             os.unlink(docx_path)
             if os.path.exists(result.get("anonymized_path", "")):
                 os.unlink(result["anonymized_path"])
-            if 'export_path' in locals() and os.path.exists(export_path):
-                os.unlink(export_path)
+            if 'export_result' in locals():
+                for path in {export_result.get("output_path"), export_result.get("temp_path")}:
+                    if path and os.path.exists(path):
+                        os.unlink(path)
 
 
 if __name__ == "__main__":  # pragma: no cover

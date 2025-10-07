@@ -12,6 +12,7 @@ import threading
 import uuid
 from datetime import datetime
 import json
+import shutil
 
 # Configuration logging précoce
 logging.basicConfig(level=logging.WARNING)
@@ -2368,8 +2369,18 @@ class DocumentAnonymizer:
         entities: Optional[List[Dict]] = None,
         options: Optional[Dict[str, Any]] = None,
         audit: bool = False,
-    ) -> str:
-        """Exporter un document anonymisé dans le format souhaité."""
+    ) -> Dict[str, str]:
+        """Exporter un document anonymisé dans le format souhaité.
+
+        Returns
+        -------
+        Dict[str, str]
+            Dictionnaire contenant le chemin du fichier temporaire utilisé
+            pour le téléchargement (`temp_path`) et le chemin final (`output_path`).
+            Par défaut, les deux valeurs pointent vers le répertoire temporaire
+            interne. Si `options["output_path"]` est défini, une copie est
+            réalisée vers ce chemin personnalisé sans modifier le fichier source.
+        """
 
         if (
             not isinstance(original_path, str)
@@ -2685,8 +2696,8 @@ class DocumentAnonymizer:
                     pdf.set_font("Arial", size=12)
                     for key, value in stats.items():
                         pdf.multi_cell(0, 10, f"{key}: {value}")
-            pdf.output(output_path)
-            return output_path
+            pdf.output(temp_output_path)
+            final_output_path = temp_output_path
 
         else:
             raise ValueError(f"Unsupported export format: {export_format}")
@@ -2701,16 +2712,39 @@ class DocumentAnonymizer:
         metadata: Optional[Dict[str, Any]] = None,
         audit: bool = False,
         original_path: Optional[str] = None,
-    ) -> str:
+    ) -> Dict[str, str]:
         """Écrire le texte anonymisé dans le format choisi."""
 
         filename = f"anonymized_{uuid.uuid4().hex[:8]}.{output_format}"
-        output_path = os.path.join(self.temp_dir, filename)
+        temp_output_path = os.path.join(self.temp_dir, filename)
+        final_output_path = temp_output_path
+
+        custom_output_option = options.get("output_path")
+        resolved_custom_path: Optional[str] = None
+        if isinstance(custom_output_option, str) and custom_output_option.strip():
+            candidate = os.path.abspath(os.path.expanduser(custom_output_option.strip()))
+            if candidate.endswith(os.sep) and not os.path.isdir(candidate):
+                os.makedirs(candidate, exist_ok=True)
+            if os.path.isdir(candidate):
+                resolved_custom_path = os.path.join(candidate, filename)
+            else:
+                resolved_custom_path = candidate
+                if not resolved_custom_path.lower().endswith(f".{output_format}"):
+                    resolved_custom_path = f"{resolved_custom_path}.{output_format}"
+
+        if (
+            resolved_custom_path
+            and original_path
+            and os.path.abspath(resolved_custom_path) == os.path.abspath(original_path)
+        ):
+            raise ValueError(
+                "Le chemin de sortie personnalisé ne peut pas correspondre au fichier original."
+            )
 
         watermark = options.get("watermark")
 
         if output_format == "txt":
-            with open(output_path, "w", encoding="utf-8") as f:
+            with open(temp_output_path, "w", encoding="utf-8") as f:
                 if watermark:
                     f.write(f"{watermark}\n\n")
                 f.write(anonymized_text)
@@ -2723,7 +2757,7 @@ class DocumentAnonymizer:
                         f.write("\n\n=== STATISTICS ===\n")
                         for key, value in stats.items():
                             f.write(f"{key}: {value}\n")
-            return output_path
+            final_output_path = temp_output_path
 
         elif output_format == "docx":
             if not DOCX_SUPPORT:
@@ -2817,9 +2851,8 @@ class DocumentAnonymizer:
                     for key, value in stats.items():
                         doc.add_paragraph(f"{key}: {value}")
 
-            output_path = options.get("output_path", original_path)
-            doc.save(output_path)
-            return output_path
+            doc.save(temp_output_path)
+            final_output_path = temp_output_path
 
         elif output_format == "pdf":
             try:
@@ -2854,11 +2887,23 @@ class DocumentAnonymizer:
                     pdf.set_font("Arial", size=12)
                     for key, value in stats.items():
                         pdf.multi_cell(0, 10, f"{key}: {value}")
-            pdf.output(output_path)
-            return output_path
+            pdf.output(temp_output_path)
+            final_output_path = temp_output_path
 
         else:
-            raise ValueError(f"Unsupported format: {output_format}")
+            raise ValueError(f"Unsupported export format: {output_format}")
+
+        if resolved_custom_path:
+            target_dir = os.path.dirname(resolved_custom_path)
+            if target_dir:
+                os.makedirs(target_dir, exist_ok=True)
+            shutil.copy2(temp_output_path, resolved_custom_path)
+            final_output_path = resolved_custom_path
+
+        return {
+            "output_path": final_output_path,
+            "temp_path": temp_output_path,
+        }
 
     def _preprocess_text(self, text: str) -> str:
         """Prétraitement optimisé du texte français"""

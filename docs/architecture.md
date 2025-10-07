@@ -19,7 +19,7 @@ sequenceDiagram
     E-->>S: Statistiques / Groupes
     U->>S: Demande d'export
     S->>A: `export_anonymized_document`
-    A-->>S: Fichier exporté
+    A-->>S: Chemins d'export (temp + final)
     S-->>U: Téléchargement
 ```
 
