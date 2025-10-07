@@ -2022,20 +2022,28 @@ class DocumentProcessor:
             logging.warning(f"PyMuPDF échoué: {e}")
         
         # Méthode 3: pdf2docx puis extraction DOCX
+        temp_docx = None
         try:
-            temp_docx = tempfile.mktemp(suffix='.docx')
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp_docx:
+                temp_docx = tmp_docx.name
+
             pdf2docx_parse(file_path, temp_docx)
-            
+
             text_content, docx_metadata = self.extract_text_from_docx(temp_docx)
             metadata.update(docx_metadata)
             metadata["extraction_method"] = "pdf2docx"
-            
-            os.unlink(temp_docx)
+
             return text_content, metadata
-        
+
         except (OSError, RuntimeError) as e:
             logging.warning(f"pdf2docx échoué: {e}")
-        
+        finally:
+            if temp_docx and os.path.exists(temp_docx):
+                try:
+                    os.unlink(temp_docx)
+                except OSError as cleanup_error:
+                    logging.warning(f"Échec nettoyage fichier temporaire {temp_docx}: {cleanup_error}")
+
         raise Exception("Impossible d'extraire le texte du PDF avec toutes les méthodes disponibles")
     
     def extract_text_from_docx(self, file_path: str) -> Tuple[str, Dict]:
