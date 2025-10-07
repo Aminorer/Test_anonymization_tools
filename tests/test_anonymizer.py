@@ -707,13 +707,16 @@ class TestDocumentAnonymizer(unittest.TestCase):
                 'process_file',
                 wraps=self.anonymizer.document_processor.process_file
             ) as mocked_proc:
-                result_path = self.anonymizer.export_anonymized_document(
+                export_result = self.anonymizer.export_anonymized_document(
                     temp_path, [entity], options, audit=True
                 )
                 mocked_proc.assert_called_once_with(temp_path)
 
-            self.assertTrue(os.path.exists(result_path))
-            with open(result_path, 'r', encoding='utf-8') as rf:
+            output_path = export_result["output_path"]
+            temp_output = export_result["temp_path"]
+            self.assertTrue(os.path.exists(output_path))
+            self.assertTrue(os.path.exists(temp_output))
+            with open(temp_output, 'r', encoding='utf-8') as rf:
                 content = rf.read()
 
             self.assertIn('[EMAIL_1]', content)
@@ -722,8 +725,10 @@ class TestDocumentAnonymizer(unittest.TestCase):
             self.assertIn('total_entities', content)
         finally:
             os.unlink(temp_path)
-            if 'result_path' in locals() and os.path.exists(result_path):
-                os.unlink(result_path)
+            if 'export_result' in locals():
+                for path in {export_result.get('output_path'), export_result.get('temp_path')}:
+                    if path and os.path.exists(path):
+                        os.unlink(path)
 
     def test_export_anonymized_document_auto_detect(self):
         """Vérifie l'export avec détection automatique des entités"""
@@ -738,16 +743,76 @@ class TestDocumentAnonymizer(unittest.TestCase):
                 'detect_entities',
                 wraps=self.anonymizer.regex_anonymizer.detect_entities
             ) as mocked_detect:
-                result_path = self.anonymizer.export_anonymized_document(temp_path, None, {"format": "txt"})
+                export_result = self.anonymizer.export_anonymized_document(
+                    temp_path, None, {"format": "txt"}
+                )
                 mocked_detect.assert_called_once()
 
-            with open(result_path, 'r', encoding='utf-8') as rf:
+            temp_output = export_result["temp_path"]
+            with open(temp_output, 'r', encoding='utf-8') as rf:
                 content = rf.read()
             self.assertIn('[EMAIL_1]', content)
         finally:
             os.unlink(temp_path)
-            if 'result_path' in locals() and os.path.exists(result_path):
-                os.unlink(result_path)
+            if 'export_result' in locals():
+                for path in {export_result.get('output_path'), export_result.get('temp_path')}:
+                    if path and os.path.exists(path):
+                        os.unlink(path)
+
+    def test_export_anonymized_document_custom_output_path(self):
+        """Vérifie la copie vers un chemin personnalisé sans modifier l'original"""
+
+        text = "Email: custom@example.com"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            custom_target = os.path.join(tmpdir, "result_custom")
+            try:
+                export_result = self.anonymizer.export_anonymized_document(
+                    temp_path,
+                    None,
+                    {"format": "txt", "output_path": custom_target},
+                )
+                expected_output = (
+                    custom_target
+                    if custom_target.endswith('.txt')
+                    else f"{custom_target}.txt"
+                )
+                self.assertEqual(
+                    os.path.abspath(export_result["output_path"]),
+                    os.path.abspath(expected_output),
+                )
+                self.assertTrue(os.path.exists(export_result["temp_path"]))
+                self.assertTrue(os.path.exists(export_result["output_path"]))
+                with open(export_result["output_path"], 'r', encoding='utf-8') as rf:
+                    content = rf.read()
+                self.assertIn('[EMAIL_1]', content)
+            finally:
+                if 'export_result' in locals():
+                    for path in {export_result.get('output_path'), export_result.get('temp_path')}:
+                        if path and os.path.exists(path):
+                            os.unlink(path)
+                os.unlink(temp_path)
+
+    def test_export_anonymized_document_rejects_original_path(self):
+        """Refuse un chemin de sortie identique au fichier source"""
+
+        text = "Email: samepath@example.com"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(text)
+            temp_path = f.name
+
+        try:
+            with self.assertRaises(ValueError):
+                self.anonymizer.export_anonymized_document(
+                    temp_path,
+                    None,
+                    {"format": "txt", "output_path": temp_path},
+                )
+        finally:
+            os.unlink(temp_path)
 
     def test_export_anonymized_document_invalid_path(self):
         """L'export échoue si le chemin fourni est invalide"""

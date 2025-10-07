@@ -141,10 +141,15 @@ anonymizer = DocumentAnonymizer()
 result = anonymizer.process_document("contrat.pdf", audit=True)
 
 # Export en incluant le rapport
-export_path = anonymizer.export_anonymized_document(
+export_paths = anonymizer.export_anonymized_document(
     "contrat.txt", options={"format": "txt"}, audit=True
 )
+print("Chemin temporaire:", export_paths["temp_path"])
+print("Chemin final:", export_paths["output_path"])
 ```
+
+> 💡 Pour enregistrer une copie dans un dossier spécifique sans modifier le
+> fichier source, utilisez l'option `options={"format": "txt", "output_path": "/chemin/personnalise"}`.
 
 ## ⚙️ **Configuration Avancée**
 

@@ -1569,6 +1569,11 @@ def display_export_section_advanced():
                 "txt": "📝 Texte Simple (TXT)"
             }[x]
         )
+
+        custom_output_path = st.text_input(
+            "Chemin de sortie personnalisé (optionnel)",
+            help="Laisse vide pour utiliser le répertoire temporaire de l'application."
+        )
         
         # Vérifier la présence du fichier original avant export
         original_path = st.session_state.get("original_file_path")
@@ -1590,20 +1595,29 @@ def display_export_section_advanced():
                     "format": export_format,
                     "watermark": watermark_text if add_watermark else None,
                 }
+                if custom_output_path.strip():
+                    export_options["output_path"] = custom_output_path.strip()
                 audit_flag = generate_report or include_stats
 
                 # Exporter en utilisant le fichier original
                 anonymizer = get_anonymizer()
-                result = anonymizer.export_anonymized_document(
+                export_result = anonymizer.export_anonymized_document(
                     original_path,
                     st.session_state.entities,
                     export_options,
                     audit=audit_flag,
                 )
 
+                if isinstance(export_result, dict):
+                    output_path = export_result.get("output_path")
+                    temp_path = export_result.get("temp_path", output_path)
+                else:
+                    output_path = export_result
+                    temp_path = export_result
+
                 # Téléchargement
-                if result and os.path.exists(result):
-                    with open(result, "rb") as f:
+                if temp_path and os.path.exists(temp_path):
+                    with open(temp_path, "rb") as f:
                         file_content = f.read()
 
                     file_name = f"anonymized_{Path(original_path).stem}.{export_format}"
@@ -1613,6 +1627,10 @@ def display_export_section_advanced():
                         file_name=file_name,
                         mime=f"application/{export_format}"
                     )
+                    if output_path and output_path != temp_path:
+                        st.success(
+                            f"📁 Fichier exporté dans le dossier personnalisé :\n`{output_path}`"
+                        )
                 else:
                     st.error("❌ Erreur lors de l'export du document")
 
