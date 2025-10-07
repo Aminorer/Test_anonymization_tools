@@ -41,8 +41,12 @@ mkdir anonymizer-streamlit
 cd anonymizer-streamlit
 
 # Créer les fichiers (voir structure ci-dessous)
-# Installer les dépendances
+# Installer les dépendances minimales (compatibles Streamlit Cloud)
 pip install -r requirements.txt
+
+# Pour activer les fonctionnalités IA avancées en local
+# (PyTorch, Transformers, export PDF, etc.)
+pip install -r requirements-full.txt
 ```
 
 ### **3. Lancement**
