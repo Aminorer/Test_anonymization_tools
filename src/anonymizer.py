@@ -351,6 +351,7 @@ class RegexAnonymizer:
         titles: Optional[List[str]] = None,
     ):
         self.patterns = FRENCH_ENTITY_PATTERNS if use_french_patterns else ENTITY_PATTERNS
+        self.compiled_patterns: Dict[str, re.Pattern] = {}
         self.replacements = DEFAULT_REPLACEMENTS
         self.use_french_patterns = use_french_patterns
         # Mapping des valeurs d'entités vers leurs jetons anonymisés
@@ -405,9 +406,35 @@ class RegexAnonymizer:
         self.bktree_threshold = 100
         # Mapping canonique -> jeton exposé aux composants externes
         self.canonical_token_map: Dict[str, Dict[str, str]] = {}
+        self._compile_patterns()
         logging.info(
             f"RegexAnonymizer initialisé avec {len(self.patterns)} patterns"
         )
+
+    def _compile_patterns(self) -> None:
+        """Précompiler les motifs regex configurés."""
+        compiled: Dict[str, re.Pattern] = {}
+        flags = re.IGNORECASE | re.MULTILINE
+        for entity_type, pattern in self.patterns.items():
+            try:
+                compiled[entity_type] = re.compile(pattern, flags)
+            except re.error as e:
+                logging.warning(
+                    f"Pattern regex invalide pour {entity_type}: {e}"
+                )
+        self.compiled_patterns = compiled
+
+    def refresh_patterns(
+        self,
+        *,
+        patterns: Optional[Dict[str, str]] = None,
+        recompile: bool = True,
+    ) -> None:
+        """Mettre à jour les motifs et recompiler si demandé."""
+        if patterns is not None:
+            self.patterns = patterns
+        if recompile:
+            self._compile_patterns()
 
     def _similarity_score(self, a: str, b: str) -> float:
         """Compute similarity score between two strings using the pre-loaded algorithm."""
@@ -473,35 +500,28 @@ class RegexAnonymizer:
         raw_entities: List[Entity] = []
         entity_id = 0
 
-        for entity_type, pattern in self.patterns.items():
-            try:
-                compiled_pattern = re.compile(pattern, re.IGNORECASE | re.MULTILINE)
+        for entity_type, compiled_pattern in self.compiled_patterns.items():
+            for match in compiled_pattern.finditer(text):
+                # Normaliser le type d'entité
+                normalized_type = self._normalize_entity_type(entity_type)
 
-                for match in compiled_pattern.finditer(text):
-                    # Normaliser le type d'entité
-                    normalized_type = self._normalize_entity_type(entity_type)
+                # Validation de l'entité
+                if not self._is_valid_entity_match(match.group(), normalized_type):
+                    continue
 
-                    # Validation de l'entité
-                    if not self._is_valid_entity_match(match.group(), normalized_type):
-                        continue
-
-                    entity = Entity(
-                        id=f"regex_{entity_id}",
-                        type=normalized_type,
-                        value=match.group().strip(),
-                        start=match.start(),
-                        end=match.end(),
-                        confidence=1.0,
-                        replacement=self.replacements.get(normalized_type, f"[{normalized_type}]"),
-                        context=self._extract_context(text, match.start(), match.end()),
-                        method="regex"
-                    )
-                    raw_entities.append(entity)
-                    entity_id += 1
-
-            except re.error as e:
-                logging.warning(f"Pattern regex invalide pour {entity_type}: {e}")
-                continue
+                entity = Entity(
+                    id=f"regex_{entity_id}",
+                    type=normalized_type,
+                    value=match.group().strip(),
+                    start=match.start(),
+                    end=match.end(),
+                    confidence=1.0,
+                    replacement=self.replacements.get(normalized_type, f"[{normalized_type}]"),
+                    context=self._extract_context(text, match.start(), match.end()),
+                    method="regex"
+                )
+                raw_entities.append(entity)
+                entity_id += 1
 
         # Déduplication directe des entités détectées
         entities = self._deduplicate_entities(raw_entities, text)
