@@ -376,10 +376,11 @@ class TestEntityManager(unittest.TestCase):
             "Emails test",
             "Groupe de test pour les emails"
         )
-        
+
         self.assertIsNotNone(group_id)
         group = self.manager.get_group_by_id(group_id)
         self.assertEqual(group["name"], "Emails test")
+        self.assertTrue(group["token"].startswith("[EMAILS_TEST"))
     
     def test_group_entities(self):
         """Test de groupement d'entités"""

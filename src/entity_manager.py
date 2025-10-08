@@ -1,8 +1,9 @@
 import uuid
 import json
+import logging
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import logging
 
 class EntityManager:
     """Gestionnaire pour les entités et groupes d'entités"""
@@ -256,27 +257,75 @@ class EntityManager:
     
     # Gestion des groupes
     
-    def create_group(self, name: str, description: str = "", entity_ids: List[str] = None) -> str:
-        """Créer un nouveau groupe d'entités"""
+    def create_group(
+        self, name: str, description: str = "", entity_ids: Optional[List[str]] = None
+    ) -> str:
+        """Créer un nouveau groupe d'entités."""
+
+        if not name or not name.strip():
+            raise ValueError("Le nom du groupe ne peut pas être vide")
+
         try:
-            group_id = str(uuid.uuid4())
+            entity_ids = list(dict.fromkeys(entity_ids or []))
+
+            # Nettoyer le nom pour générer un identifiant lisible
+            slug = re.sub(r"[^A-Za-z0-9]+", "_", name.strip()).strip("_")
+            if not slug:
+                slug = f"GROUP_{uuid.uuid4().hex[:8]}"
+            base_id = slug.upper()
+
+            existing_ids = {group.get("id") for group in self.groups}
+            group_id = base_id
+            suffix = 1
+            while group_id in existing_ids:
+                suffix += 1
+                group_id = f"{base_id}_{suffix}"
+
+            token = f"[{group_id}]"
+
+            # Conserver l'état précédent des entités pour pouvoir annuler
+            previous_replacements: List[Dict[str, Any]] = []
+            valid_entity_ids: List[str] = []
+            for entity_id in entity_ids:
+                entity = self.get_entity_by_id(entity_id)
+                if not entity:
+                    logging.warning(
+                        "Entity %s not found when creating group %s", entity_id, group_id
+                    )
+                    continue
+                previous_replacements.append(
+                    {"id": entity_id, "replacement": entity.get("replacement")}
+                )
+                entity["replacement"] = token
+                entity["updated_at"] = datetime.now().isoformat()
+                valid_entity_ids.append(entity_id)
+
             group_data = {
-                'id': group_id,
-                'name': name,
-                'description': description,
-                'entity_ids': entity_ids or [],
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
+                "id": group_id,
+                "name": name,
+                "description": description,
+                "entity_ids": valid_entity_ids,
+                "token": token,
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
             }
-            
+
             self.groups.append(group_data)
-            
+            self._invalidate_grouped_entities_cache()
+
             # Sauvegarder dans l'historique
-            self._save_to_history("create_group", group_id)
-            
-            logging.info(f"Group created: {group_id}")
+            self._save_to_history(
+                "create_group",
+                group_id,
+                {
+                    "group": group_data.copy(),
+                    "entities": previous_replacements,
+                },
+            )
+
+            logging.info("Group created: %s", group_id)
             return group_id
-            
+
         except ValueError as e:
             # Invalid input for group creation should surface as ValueError
             logging.error(f"Error creating group: {str(e)}")
@@ -540,8 +589,15 @@ class EntityManager:
                         entity.update(old_data)
                         
             elif action == "create_group":
-                # Annuler la création = supprimer
+                # Annuler la création = supprimer et restaurer les remplacements
                 self.groups = [g for g in self.groups if g['id'] != target_id]
+                if old_data and isinstance(old_data, dict):
+                    for entity_info in old_data.get("entities", []):
+                        entity = self.get_entity_by_id(entity_info.get("id"))
+                        if entity is not None:
+                            entity["replacement"] = entity_info.get("replacement")
+                            entity["updated_at"] = datetime.now().isoformat()
+                self._invalidate_grouped_entities_cache()
                 
             elif action == "delete_group":
                 # Annuler la suppression = réajouter
