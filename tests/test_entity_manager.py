@@ -20,6 +20,7 @@ class TestGroupManagement(unittest.TestCase):
         self.assertIsNotNone(group_id)
         group = self.manager.get_group_by_id(group_id)
         self.assertEqual(group["name"], "Test")
+        self.assertEqual(group["token"], "[TEST]")
 
         updated = self.manager.update_group(group_id, {"description": "new"})
         self.assertTrue(updated)
@@ -38,6 +39,19 @@ class TestGroupManagement(unittest.TestCase):
         results = self.manager.filter_entities({"group_id": group_id})
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["id"], e1)
+
+    def test_create_group_assigns_replacement(self):
+        """Les entités sélectionnées doivent recevoir le nouveau token."""
+        entity_id = self.manager.add_entity(
+            {"type": "ORG", "value": "Acme", "start": 0, "end": 4}
+        )
+        group_id = self.manager.create_group("Mon Groupe", entity_ids=[entity_id])
+
+        entity = self.manager.get_entity_by_id(entity_id)
+        self.assertEqual(entity["replacement"], "[MON_GROUPE]")
+        grouped = self.manager.get_grouped_entities()
+        self.assertIn(group_id, grouped)
+        self.assertEqual(grouped[group_id]["token"], "[MON_GROUPE]")
 
     def test_get_grouped_entities(self):
         """Vérifie la création correcte des groupes d'entités."""
