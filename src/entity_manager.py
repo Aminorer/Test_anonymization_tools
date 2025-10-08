@@ -183,6 +183,50 @@ class EntityManager:
                     {"start": entity.get("start"), "end": entity.get("end")}
                 )
 
+        for manual_group in self.groups:
+            group_id = manual_group.get("id")
+            if not group_id:
+                continue
+
+            aggregated = grouped.get(group_id)
+            if aggregated is None:
+                token = manual_group.get("token")
+                if not token:
+                    continue
+                aggregated = grouped.setdefault(
+                    group_id,
+                    {
+                        "id": group_id,
+                        "type": manual_group.get("type"),
+                        "token": token,
+                        "total_occurrences": 0,
+                        "variants": {},
+                    },
+                )
+
+            manual_type = manual_group.get("type")
+            if manual_type:
+                aggregated["type"] = manual_type
+
+            manual_token = manual_group.get("token")
+            if manual_token:
+                aggregated["token"] = manual_token
+
+            manual_variants = manual_group.get("manual_variants", {})
+            for value, info in manual_variants.items():
+                entry = aggregated["variants"].setdefault(
+                    value,
+                    {
+                        "value": value,
+                        "count": 0,
+                        "positions": [],
+                    },
+                )
+                if "count" in info:
+                    entry["count"] = info["count"]
+                if "positions" in info:
+                    entry["positions"] = info["positions"]
+
         self._grouped_entities_cache = grouped
         return grouped
     
@@ -380,6 +424,25 @@ class EntityManager:
                             entity["updated_at"] = datetime.now().isoformat()
 
                 if updated:
+                    manual_group = self.get_group_by_id(group_id)
+                    if manual_group is None:
+                        manual_group = {
+                            "id": group_id,
+                            "entity_ids": [],
+                            "created_at": datetime.now().isoformat(),
+                        }
+                        self.groups.append(manual_group)
+
+                    manual_group["token"] = new_token
+                    if new_type is not None:
+                        manual_group["type"] = new_type
+                    if new_variants is not None:
+                        manual_group["manual_variants"] = {
+                            key: dict(value)
+                            for key, value in new_variants.items()
+                        }
+                    manual_group["updated_at"] = datetime.now().isoformat()
+
                     self._invalidate_grouped_entities_cache()
                     self._save_to_history("update_group", group_id, old_group)
                 logging.info(f"Group updated from aggregated data: {group_id}")
