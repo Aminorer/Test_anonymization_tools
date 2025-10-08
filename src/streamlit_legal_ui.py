@@ -103,8 +103,10 @@ def display_legal_entity_manager(
     filters = st.session_state["group_filters"]
     filters["query"] = st.text_input(texts["search_group"], filters.get("query", ""))
     type_options = sorted({g.get("type", "") for g in groups if g.get("type")})
-    if not filters.get("types"):
-        filters["types"] = type_options
+    current_types = [t for t in filters.get("types", []) if t in type_options]
+    if not current_types and type_options:
+        current_types = type_options
+    filters["types"] = current_types
     filters["types"] = st.multiselect(
         texts["table_type"], type_options, default=filters["types"]
     )
