@@ -234,12 +234,25 @@ def display_legal_entity_manager(
         if group:
             modal_ctx = st.modal if hasattr(st, "modal") else st.expander
             with modal_ctx(texts["action_edit"]):
-                new_token = st.text_input(texts["table_token"], group.get("token", ""))
-                new_type = st.text_input(texts["table_type"], group.get("type", ""))
-                variants_str = st.text_area(
-                    texts["table_variants"],
+                token_key = f"edit_token_{gid}"
+                type_key = f"edit_type_{gid}"
+                variants_key = f"edit_variants_{gid}"
+
+                st.session_state.setdefault(token_key, group.get("token", ""))
+                st.session_state.setdefault(type_key, group.get("type", ""))
+                st.session_state.setdefault(
+                    variants_key,
                     ", ".join(f"[{v}]" for v in group.get("variants", {})),
                 )
+
+                new_token = st.text_input(texts["table_token"], key=token_key)
+                new_type = st.text_input(texts["table_type"], key=type_key)
+                variants_str = st.text_area(texts["table_variants"], key=variants_key)
+
+                def _reset_edit_state() -> None:
+                    for state_key in (token_key, type_key, variants_key):
+                        st.session_state.pop(state_key, None)
+
                 if st.button("Save", key="save_edit"):
                     group["token"] = new_token
                     group["type"] = new_type
@@ -266,9 +279,11 @@ def display_legal_entity_manager(
                         ]
                         groups[:] = updated_groups
                     st.session_state["editing_group"] = None
+                    _reset_edit_state()
                     st.rerun()
                 if st.button(texts["delete_cancel"], key="cancel_edit"):
                     st.session_state["editing_group"] = None
+                    _reset_edit_state()
 
     if st.session_state.get("merge_group") is not None:
         gid = st.session_state["merge_group"]
