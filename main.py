@@ -520,19 +520,12 @@ def display_processing_options():
             st.checkbox("Mode debug", key="debug_mode", help="Affiche des informations de débogage")
             st.checkbox("Cache résultats", value=True, key="cache_results", help="Met en cache les résultats pour les gros documents")
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def process_document_cached(file_content, filename, mode, confidence, preset):
-    """Traitement de document avec cache"""
-    return process_document_core(file_content, filename, mode, confidence, preset)
+def _store_original_document(file_content, filename):
+    """Sauvegarder le document original pour l'export."""
+    import tempfile
 
-def process_document_core(file_content, filename, mode, confidence, preset):
-    """Logique de traitement core"""
-    # Sauvegarder le fichier temporaire
     temp_path = None
     try:
-        import tempfile
-        import os
-
         # Supprimer l'ancien fichier original s'il existe
         old_path = st.session_state.get("original_file_path")
         if old_path and os.path.exists(old_path):
@@ -541,15 +534,33 @@ def process_document_core(file_content, filename, mode, confidence, preset):
             except OSError:
                 pass
 
-        # Créer un fichier temporaire
         with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
             tmp.write(file_content)
             temp_path = tmp.name
 
-        # Conserver le chemin pour l'export ultérieur
         st.session_state["original_file_path"] = temp_path
+        return temp_path
 
-        # Obtenir l'anonymizer
+    except (OSError, ValueError) as e:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+        st.session_state["original_file_path"] = None
+        raise e
+
+
+def process_document_core(file_content, filename, mode, confidence, preset):
+    """Logique de traitement core sans effets sur l'état de session."""
+    import tempfile
+
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(filename).suffix) as tmp:
+            tmp.write(file_content)
+            temp_path = tmp.name
+
         anonymizer = get_anonymizer()
 
         # Traitement avec gestion d'erreurs robuste
@@ -558,24 +569,31 @@ def process_document_core(file_content, filename, mode, confidence, preset):
         return result
 
     except (OSError, ValueError, RuntimeError) as e:
-        # Return structured error for file processing issues
+        return {
+            "status": "error",
+            "error": f"Erreur lors du traitement: {str(e)}"
+        }
+    finally:
         if temp_path and os.path.exists(temp_path):
             try:
                 os.unlink(temp_path)
             except OSError:
                 pass
-        st.session_state["original_file_path"] = None
-        return {
-            "status": "error",
-            "error": f"Erreur lors du traitement: {str(e)}"
-        }
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def process_document_cached(file_content, filename, mode, confidence, preset):
+    """Traitement de document avec cache"""
+    return process_document_core(file_content, filename, mode, confidence, preset)
 
 def process_document_with_progress(uploaded_file):
     """Traiter le document avec barre de progression avancée"""
     try:
         # Configuration selon le preset
         preset = ANONYMIZATION_PRESETS.get(st.session_state.current_preset, ANONYMIZATION_PRESETS["standard"])
-        
+
+        file_bytes = uploaded_file.getvalue()
+
         # Interface de progression
         progress_container = st.empty()
         progress_container.markdown("""
@@ -602,12 +620,21 @@ def process_document_with_progress(uploaded_file):
         for i, (step_name, progress) in enumerate(steps):
             status_text.text(step_name)
             progress_bar.progress(progress)
-            
+
             if i == 3:  # Étape d'analyse
                 # Traitement réel pendant cette étape
+                try:
+                    _store_original_document(file_bytes, uploaded_file.name)
+                except (OSError, ValueError) as e:
+                    progress_container.empty()
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.error(f"❌ Erreur lors de l'enregistrement du document original: {str(e)}")
+                    return False
+
                 if st.session_state.get("cache_results", True):
                     result = process_document_cached(
-                        uploaded_file.getvalue(),
+                        file_bytes,
                         uploaded_file.name,
                         st.session_state.processing_mode,
                         st.session_state.confidence_threshold,
@@ -615,7 +642,7 @@ def process_document_with_progress(uploaded_file):
                     )
                 else:
                     result = process_document_core(
-                        uploaded_file.getvalue(),
+                        file_bytes,
                         uploaded_file.name,
                         st.session_state.processing_mode,
                         st.session_state.confidence_threshold,
@@ -666,8 +693,15 @@ def process_document_with_progress(uploaded_file):
             return True
         else:
             st.error(f"❌ Erreur lors du traitement: {result.get('error', 'Erreur inconnue')}")
+            original_path = st.session_state.get("original_file_path")
+            if original_path and os.path.exists(original_path):
+                try:
+                    os.unlink(original_path)
+                except OSError:
+                    pass
+            st.session_state["original_file_path"] = None
             return False
-            
+
     except (OSError, ValueError, RuntimeError) as e:
         # Surface processing errors to the user
         st.error(f"❌ Erreur lors du traitement: {str(e)}")
