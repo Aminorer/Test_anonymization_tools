@@ -287,8 +287,40 @@ class EntityManager:
         try:
             group = self.get_group_by_id(group_id)
             if not group:
-                logging.warning(f"Group not found: {group_id}")
-                return False
+                # Le groupe peut provenir de l'agrégation "get_grouped_entities" et
+                # ne pas exister dans self.groups. Dans ce cas on met à jour les
+                # entités correspondantes directement.
+                aggregated_group = self.get_grouped_entities().get(group_id)
+                if not aggregated_group:
+                    logging.warning(f"Group not found: {group_id}")
+                    return False
+
+                old_group = aggregated_group.copy()
+                old_token = aggregated_group.get("token") or f"[{group_id}]"
+                new_token = updates.get("token", old_token)
+                new_type = updates.get("type", aggregated_group.get("type"))
+                new_variants = updates.get("variants")
+
+                updated = False
+                for entity in self.entities:
+                    if entity.get("replacement") == old_token:
+                        if "token" in updates and new_token != old_token:
+                            entity["replacement"] = new_token
+                            updated = True
+                        if "type" in updates and new_type is not None:
+                            entity["type"] = new_type
+                            updated = True
+                        if new_variants is not None:
+                            entity["variants"] = list(new_variants.keys())
+                            updated = True
+                        if updated:
+                            entity["updated_at"] = datetime.now().isoformat()
+
+                if updated:
+                    self._invalidate_grouped_entities_cache()
+                    self._save_to_history("update_group", group_id, old_group)
+                logging.info(f"Group updated from aggregated data: {group_id}")
+                return True
 
             # Sauvegarder l'état précédent
             old_group = group.copy()
@@ -323,7 +355,7 @@ class EntityManager:
 
             logging.info(f"Group updated: {group_id}")
             return True
-            
+
         except (KeyError, TypeError) as e:
             # Updating with invalid keys or structures is handled gracefully
             logging.error(f"Error updating group: {str(e)}")
