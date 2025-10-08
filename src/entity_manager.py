@@ -289,17 +289,38 @@ class EntityManager:
             if not group:
                 logging.warning(f"Group not found: {group_id}")
                 return False
-            
+
             # Sauvegarder l'état précédent
             old_group = group.copy()
-            
+
+            old_token = group.get("token")
+            new_token = updates.get("token", old_token)
+            cache_invalidated = False
+
             # Appliquer les mises à jour
             group.update(updates)
+            if new_token and new_token != old_token:
+                # Mettre à jour l'identifiant interne pour rester cohérent avec le token
+                group["id"] = new_token.strip("[]") or new_token
+                # Propager le nouveau token à toutes les entités associées
+                for entity in self.entities:
+                    if entity.get("replacement") == old_token:
+                        entity["replacement"] = new_token
+                        entity["updated_at"] = datetime.now().isoformat()
+                # Invalider le cache des groupes car les agrégations changent
+                self._invalidate_grouped_entities_cache()
+                cache_invalidated = True
+
+            if not cache_invalidated and any(
+                key in updates for key in ("token", "type", "variants")
+            ):
+                self._invalidate_grouped_entities_cache()
+
             group['updated_at'] = datetime.now().isoformat()
-            
+
             # Sauvegarder dans l'historique
             self._save_to_history("update_group", group_id, old_group)
-            
+
             logging.info(f"Group updated: {group_id}")
             return True
             
