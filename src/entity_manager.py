@@ -223,9 +223,13 @@ class EntityManager:
                     },
                 )
                 if "count" in info:
-                    entry["count"] = info["count"]
+                    manual_count = info.get("count")
+                    if manual_count not in (None, 0):
+                        entry["count"] = manual_count
                 if "positions" in info:
-                    entry["positions"] = info["positions"]
+                    manual_positions = info.get("positions")
+                    if manual_positions:
+                        entry["positions"] = manual_positions
 
         self._grouped_entities_cache = grouped
         return grouped
@@ -424,14 +428,21 @@ class EntityManager:
                             entity["updated_at"] = datetime.now().isoformat()
 
                 if updated:
+                    manual_group_id = new_token.strip("[]") if new_token else None
+                    if not manual_group_id:
+                        manual_group_id = new_token or group_id
                     manual_group = self.get_group_by_id(group_id)
+                    if manual_group is None and manual_group_id != group_id:
+                        manual_group = self.get_group_by_id(manual_group_id)
                     if manual_group is None:
                         manual_group = {
-                            "id": group_id,
+                            "id": manual_group_id,
                             "entity_ids": [],
                             "created_at": datetime.now().isoformat(),
                         }
                         self.groups.append(manual_group)
+                    else:
+                        manual_group["id"] = manual_group_id
 
                     manual_group["token"] = new_token
                     if new_type is not None:
