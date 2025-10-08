@@ -82,6 +82,39 @@ class TestGroupManagement(unittest.TestCase):
         self.assertEqual(org_group["total_occurrences"], 1)
         self.assertIn("Acme", org_group["variants"])
 
+    def test_update_group_from_grouped_entities(self):
+        """Mettre à jour un groupe issu de get_grouped_entities met à jour les entités."""
+
+        self.manager.add_entity(
+            {
+                "type": "ORGANISATION",
+                "value": "Saint-Gobain",
+                "start": 0,
+                "end": 12,
+                "replacement": "[ORGANISATION]",
+            }
+        )
+        # Prime the cache to simulate l'utilisation via l'UI
+        self.manager.get_grouped_entities()
+
+        updated = self.manager.update_group(
+            "ORGANISATION",
+            {
+                "token": "[Test]",
+                "type": "ORG",
+                "variants": {"Saint-Gobain": {"value": "Saint-Gobain", "count": 1, "positions": []}},
+            },
+        )
+
+        self.assertTrue(updated)
+        self.assertEqual(self.manager.entities[0]["replacement"], "[Test]")
+        self.assertEqual(self.manager.entities[0]["type"], "ORG")
+        self.assertEqual(self.manager.entities[0].get("variants"), ["Saint-Gobain"])
+
+        grouped = self.manager.get_grouped_entities()
+        self.assertIn("Test", grouped)
+        self.assertEqual(grouped["Test"]["token"], "[Test]")
+
     def test_get_entity_conflicts(self):
         """Détection des conflits de chevauchement et de jeton."""
 
