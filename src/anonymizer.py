@@ -2566,11 +2566,21 @@ class DocumentAnonymizer:
                         if getattr(ent, "replacement", None):
                             replacement_map[ent.value] = ent.replacement
 
+                ordered_replacements: List[Tuple[str, str]] = [
+                    (original, token)
+                    for original, token in sorted(
+                        replacement_map.items(),
+                        key=lambda item: len(item[0]),
+                        reverse=True,
+                    )
+                    if original and token
+                ]
+
                 # Utilitaire de remplacement simple
                 def _replace_text(text: str) -> str:
                     if not text:
                         return text
-                    for original, token in replacement_map.items():
+                    for original, token in ordered_replacements:
                         if original in text:
                             text = text.replace(original, token)
                     return text
