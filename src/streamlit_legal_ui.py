@@ -271,8 +271,10 @@ def display_legal_entity_manager(
                                 "variants": group["variants"],
                             },
                         )
-                        for v in group["variants"].keys():
-                            entity_manager.update_token_variants(new_token, v)
+                        entity_manager.replace_token_variants(
+                            new_token,
+                            group["variants"].keys(),
+                        )
                         updated_groups = [
                             {"id": gid, **data}
                             for gid, data in entity_manager.get_grouped_entities().items()

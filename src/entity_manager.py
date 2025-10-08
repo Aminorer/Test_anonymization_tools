@@ -2,7 +2,7 @@ import uuid
 import json
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Iterable
 from datetime import datetime
 
 class EntityManager:
@@ -124,6 +124,30 @@ class EntityManager:
                     updated = True
         if updated:
             # Invalidate cache only if something changed
+            self._invalidate_grouped_entities_cache()
+
+    def replace_token_variants(self, token: str, variants: Iterable[str]) -> None:
+        """Remplacer entièrement les variantes associées à un jeton donné."""
+        normalized: List[str] = []
+        seen = set()
+        for variant in variants:
+            if variant is None:
+                continue
+            cleaned = variant.strip()
+            if not cleaned or cleaned in seen:
+                continue
+            normalized.append(cleaned)
+            seen.add(cleaned)
+
+        updated = False
+        for entity in self.entities:
+            if entity.get("replacement") == token:
+                if entity.get("variants", []) != normalized:
+                    entity["variants"] = list(normalized)
+                    entity["updated_at"] = datetime.now().isoformat()
+                    updated = True
+
+        if updated:
             self._invalidate_grouped_entities_cache()
 
     def get_grouped_entities(self) -> Dict[str, Dict[str, Any]]:
@@ -467,6 +491,17 @@ class EntityManager:
                         entity["updated_at"] = datetime.now().isoformat()
                 # Invalider le cache des groupes car les agrégations changent
                 self._invalidate_grouped_entities_cache()
+                cache_invalidated = True
+
+            if "variants" in updates:
+                manual_variants = updates.get("variants") or {}
+                group["manual_variants"] = {
+                    key: dict(value) for key, value in manual_variants.items()
+                }
+                self.replace_token_variants(
+                    new_token,
+                    manual_variants.keys(),
+                )
                 cache_invalidated = True
 
             if not cache_invalidated and any(
