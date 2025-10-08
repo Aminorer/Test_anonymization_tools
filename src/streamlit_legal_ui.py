@@ -260,7 +260,13 @@ def display_legal_entity_manager(
                         )
                         for v in group["variants"].keys():
                             entity_manager.update_token_variants(new_token, v)
+                        updated_groups = [
+                            {"id": gid, **data}
+                            for gid, data in entity_manager.get_grouped_entities().items()
+                        ]
+                        groups[:] = updated_groups
                     st.session_state["editing_group"] = None
+                    st.rerun()
                 if st.button(texts["delete_cancel"], key="cancel_edit"):
                     st.session_state["editing_group"] = None
 
