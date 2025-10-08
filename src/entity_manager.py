@@ -157,17 +157,31 @@ class EntityManager:
                 },
             )
 
-            group["total_occurrences"] += 1
+            occurrences = int(entity.get("total_occurrences") or 1)
+            if occurrences < 1:
+                occurrences = 1
+            group["total_occurrences"] += occurrences
 
             value = entity.get("value")
             variant_entry = group["variants"].setdefault(
                 value,
                 {"value": value, "count": 0, "positions": []},
             )
-            variant_entry["count"] += 1
-            variant_entry["positions"].append(
-                {"start": entity.get("start"), "end": entity.get("end")}
-            )
+            variant_entry["count"] += occurrences
+
+            positions = entity.get("all_positions") or []
+            if positions:
+                for pos in positions:
+                    if isinstance(pos, dict):
+                        start = pos.get("start")
+                        end = pos.get("end")
+                    else:
+                        start, end = pos
+                    variant_entry["positions"].append({"start": start, "end": end})
+            else:
+                variant_entry["positions"].append(
+                    {"start": entity.get("start"), "end": entity.get("end")}
+                )
 
         self._grouped_entities_cache = grouped
         return grouped
