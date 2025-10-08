@@ -817,10 +817,10 @@ def display_results_advanced():
 def display_entity_manager_advanced():
     """Interface avancée de gestion des entités avec onglets"""
     if not st.session_state.entities:
-        st.info("Aucune entité à gérer. Analysez d'abord un document.")
+        st.info("Aucun groupe à gérer. Analysez d'abord un document.")
         return
 
-    st.header("🔧 Gestion Avancée des Entités")
+    st.header("🔧 Gestion Avancée des Groupes")
 
     # S'assurer que l'EntityManager est partagé entre les onglets
     if "entity_manager" not in st.session_state:
@@ -829,13 +829,11 @@ def display_entity_manager_advanced():
     # Synchroniser les entités avec le gestionnaire
     st.session_state.entity_manager.entities = st.session_state.entities
 
-    tabs = st.tabs(["Entités", "Groupes", "Recherche"])
+    tabs = st.tabs(["Groupes", "Recherche"])
 
     with tabs[0]:
-        display_entities_tab_advanced()
-    with tabs[1]:
         display_groups_tab_advanced()
-    with tabs[2]:
+    with tabs[1]:
         display_search_tab_advanced()
 
     # Mettre à jour les listes partagées

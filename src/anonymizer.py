@@ -560,6 +560,16 @@ class RegexAnonymizer:
 
         # Première passe : construire le mapping des entités
         replacements: List[Tuple[str, str]] = []
+        manual_tokens: Dict[str, str] = {
+            ent.value: ent.replacement
+            for ent in entities
+            if ent.replacement
+        }
+        manual_person_tokens: Dict[str, str] = {
+            normalize_person_name(ent.value): ent.replacement
+            for ent in entities
+            if ent.type == "PERSON" and ent.replacement
+        }
 
         def _names_match(a: str, b: str) -> bool:
             if a == b or a in b or b in a:
@@ -585,11 +595,12 @@ class RegexAnonymizer:
                 normalized_variants.setdefault(norm, set()).add(ent.value)
 
             for norm in sorted(normalized_variants.keys(), key=len, reverse=True):
-                token = None
-                for existing_norm, existing_token in canonical_map.items():
-                    if _names_match(norm, existing_norm):
-                        token = existing_token
-                        break
+                token = manual_person_tokens.get(norm)
+                if token is None:
+                    for existing_norm, existing_token in canonical_map.items():
+                        if _names_match(norm, existing_norm):
+                            token = existing_token
+                            break
                 if token is None:
                     count = self.entity_counters.get("PERSON", 0) + 1
                     self.entity_counters["PERSON"] = count
@@ -616,10 +627,15 @@ class RegexAnonymizer:
             canonical_map = self.canonical_token_map.setdefault(entity.type, {})
             tree = self.bk_trees.get(entity.type)
             canonical = entity.value
-            token = None
+            token = manual_tokens.get(entity.value)
             best_score = 0.0
             best_key: Optional[str] = None
-            if len(canonical_map) >= self.bktree_threshold and RFLevenshtein is not None:
+            if token is not None:
+                for existing_key, existing_token in canonical_map.items():
+                    if existing_token == token:
+                        best_key = existing_key
+                        break
+            if token is None and len(canonical_map) >= self.bktree_threshold and RFLevenshtein is not None:
                 if tree is None:
                     tree = BKTree(RFLevenshtein.distance)
                     for key in canonical_map.keys():
@@ -633,7 +649,7 @@ class RegexAnonymizer:
                         best_score = score
                         token = canonical_map[cand]
                         best_key = cand
-            else:
+            elif token is None:
                 for existing_key, existing_token in canonical_map.items():
                     if canonical in existing_key or existing_key in canonical:
                         score = self._similarity_score(canonical, existing_key)
@@ -672,16 +688,21 @@ class RegexAnonymizer:
                                 "timestamp": datetime.now().isoformat(),
                             }
                         )
-                    if entity_manager:
-                        entity_manager.update_token_variants(token, entity.value)
                 else:
-                    type_map[canonical] = {
-                        "token": token,
-                        "variants": {entity.value},
-                        "canonical": canonical,
-                        "origin": entity.value,
-                        "origin_timestamp": datetime.now().isoformat(),
-                    }
+                    entry = type_map.get(canonical)
+                    if entry:
+                        entry["token"] = token
+                        entry.setdefault("variants", set()).add(entity.value)
+                    else:
+                        type_map[canonical] = {
+                            "token": token,
+                            "variants": {entity.value},
+                            "canonical": canonical,
+                            "origin": entity.value,
+                            "origin_timestamp": datetime.now().isoformat(),
+                        }
+                if entity_manager:
+                    entity_manager.update_token_variants(token, entity.value)
 
             entity.replacement = token
             replacements.append((entity.value, token))
@@ -2802,8 +2823,9 @@ class DocumentAnonymizer:
                     for info in mapping.values():
                         token = info.get("token")
                         for variant in info.get("variants", []):
-                            replacement_map[variant] = token
-            elif entities:
+                            if variant and token:
+                                replacement_map[variant] = token
+            if entities:
                 for ent in entities:
                     if isinstance(ent, dict):
                         value = ent.get("value")
@@ -2814,11 +2836,29 @@ class DocumentAnonymizer:
                     if value and replacement:
                         replacement_map[value] = replacement
 
+            ordered_replacements: List[Tuple[str, str]] = [
+                (original, token)
+                for original, token in sorted(
+                    replacement_map.items(),
+                    key=lambda item: len(item[0]),
+                    reverse=True,
+                )
+                if original and token
+            ]
+
+            def _apply_replacements(text: str) -> str:
+                if not ordered_replacements or not text:
+                    return text
+                for original, token in ordered_replacements:
+                    if original in text:
+                        text = text.replace(original, token)
+                return text
+
             def _replace_in_runs(runs):
                 for run in runs:
-                    for original, token in replacement_map.items():
-                        if original in run.text:
-                            run.text = run.text.replace(original, token)
+                    new_text = _apply_replacements(run.text)
+                    if new_text != run.text:
+                        run.text = new_text
 
             # Replace in body paragraphs
             for paragraph in doc.paragraphs:
@@ -2862,9 +2902,7 @@ class DocumentAnonymizer:
                 for text_elem in doc.part.element.xpath(
                     './/w:txbxContent//w:t | .//w:drawing//w:t', namespaces=nsmap
                 ):
-                    for original, token in replacement_map.items():
-                        if original in text_elem.text:
-                            text_elem.text = text_elem.text.replace(original, token)
+                    text_elem.text = _apply_replacements(text_elem.text)
             except Exception:
                 pass
 
