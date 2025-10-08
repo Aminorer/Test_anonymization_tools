@@ -94,14 +94,19 @@ class FakeStreamlit:
         columns_sets=None,
         data_editor_updates=None,
         form_submit=False,
+        input_values=None,
+        button_presses=None,
     ):
-        self.text_value = text_value
+        self.default_text_value = text_value
         self.multiselect_return = multiselect_return
         self.columns_sets = columns_sets or []
         self.columns_index = 0
         self.session_state = {}
         self.data_editor_updates = data_editor_updates or {}
         self.form_submit = form_submit
+        self.input_values = input_values or {}
+        self.button_presses = button_presses or {}
+
         def text_column(label=None, *, help=None, width=None, max_chars=None, validate=None):
             return None
 
@@ -109,6 +114,13 @@ class FakeStreamlit:
             CheckboxColumn=lambda *a, **k: None,
             TextColumn=text_column,
         )
+
+    def _initial_widget_value(self, widget_key, fallback):
+        if widget_key in self.input_values:
+            return self.input_values[widget_key]
+        if self.default_text_value != "":
+            return self.default_text_value
+        return fallback
 
     def header(self, *a, **k):
         pass
@@ -119,8 +131,21 @@ class FakeStreamlit:
     def write(self, *a, **k):
         pass
 
-    def text_input(self, *a, **k):
-        return self.text_value
+    def text_input(self, label, value="", key=None):
+        widget_key = key or label
+        if widget_key not in self.session_state:
+            self.session_state[widget_key] = self._initial_widget_value(
+                widget_key, value
+            )
+        return self.session_state[widget_key]
+
+    def text_area(self, label, value="", key=None):
+        widget_key = key or label
+        if widget_key not in self.session_state:
+            self.session_state[widget_key] = self._initial_widget_value(
+                widget_key, value
+            )
+        return self.session_state[widget_key]
 
     def multiselect(self, label, options, default=None):
         self.multiselect_last_default = default
@@ -131,6 +156,10 @@ class FakeStreamlit:
 
     def radio(self, *a, **k):
         return "asc"
+
+    def button(self, label, key=None, **k):
+        button_key = key or label
+        return self.button_presses.get(button_key, False)
 
     def columns(self, spec):
         result = self.columns_sets[self.columns_index]
@@ -220,3 +249,85 @@ def test_filters_types_defaults_to_all(monkeypatch):
 def test_display_legal_entity_manager_rejects_extra_kwargs():
     with pytest.raises(TypeError):
         streamlit_legal_ui.display_legal_entity_manager([], language="en", unexpected=True)
+
+
+def test_edit_action_updates_type_and_variants(monkeypatch):
+    cols = [[FakeColumn(), FakeColumn(), FakeColumn()]]
+    em = streamlit_legal_ui.EntityManager()
+    em.add_entity(
+        {
+            "type": "PERSON",
+            "value": "Alice",
+            "start": 0,
+            "end": 5,
+            "replacement": "[Alpha]",
+        }
+    )
+    groups = [
+        {"id": gid, **data}
+        for gid, data in em.get_grouped_entities().items()
+    ]
+    st = FakeStreamlit(
+        columns_sets=cols,
+        data_editor_updates={0: {"Edit": True}},
+        button_presses={"save_edit": True},
+    )
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+
+    st.session_state["edit_token_Alpha"] = "[Alpha]"
+    st.session_state["edit_type_Alpha"] = "ORG"
+    st.session_state["edit_variants_Alpha"] = "[Alice], [Charlie]"
+
+    streamlit_legal_ui.display_legal_entity_manager(groups, entity_manager=em, language="en")
+
+    assert groups[0]["type"] == "ORG"
+    assert set(groups[0]["variants"].keys()) == {"Alice", "Charlie"}
+    assert em.entities[0]["type"] == "ORG"
+    assert set(em.entities[0]["variants"]) == {"Alice", "Charlie"}
+    assert "edit_type_Alpha" not in st.session_state
+
+
+def test_edit_action_replaces_variants(monkeypatch):
+    cols = [[FakeColumn(), FakeColumn(), FakeColumn()]]
+    em = streamlit_legal_ui.EntityManager()
+    em.add_entity(
+        {
+            "type": "PERSON",
+            "value": "Alice",
+            "start": 0,
+            "end": 5,
+            "replacement": "[Alpha]",
+        }
+    )
+    em.add_entity(
+        {
+            "type": "PERSON",
+            "value": "Bob",
+            "start": 6,
+            "end": 9,
+            "replacement": "[Alpha]",
+        }
+    )
+
+    groups = [
+        {"id": gid, **data}
+        for gid, data in em.get_grouped_entities().items()
+    ]
+
+    st = FakeStreamlit(
+        columns_sets=cols,
+        data_editor_updates={0: {"Edit": True}},
+        button_presses={"save_edit": True},
+    )
+    monkeypatch.setattr(streamlit_legal_ui, "st", st)
+
+    st.session_state["edit_token_Alpha"] = "[Alpha]"
+    st.session_state["edit_type_Alpha"] = "PERSON"
+    st.session_state["edit_variants_Alpha"] = "[Charlie]"
+
+    streamlit_legal_ui.display_legal_entity_manager(
+        groups, entity_manager=em, language="en"
+    )
+
+    assert list(groups[0]["variants"].keys()) == ["Charlie"]
+    assert list(em.get_grouped_entities()["Alpha"]["variants"].keys()) == ["Charlie"]
