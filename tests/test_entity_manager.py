@@ -96,6 +96,39 @@ class TestGroupManagement(unittest.TestCase):
         self.assertEqual(org_group["total_occurrences"], 1)
         self.assertIn("Acme", org_group["variants"])
 
+    def test_grouped_entities_use_total_occurrences_metadata(self):
+        """Les occurrences agrégées doivent être prises en compte."""
+
+        self.manager.add_entity(
+            {
+                "type": "EMAIL",
+                "value": "john.doe@example.com",
+                "start": 0,
+                "end": 20,
+                "replacement": "[EMAIL_1]",
+                "total_occurrences": 3,
+                "all_positions": [(0, 20), (30, 50), (60, 80)],
+            }
+        )
+
+        grouped = self.manager.get_grouped_entities()
+
+        self.assertIn("EMAIL_1", grouped)
+        email_group = grouped["EMAIL_1"]
+        self.assertEqual(email_group["total_occurrences"], 3)
+
+        variant = email_group["variants"]["john.doe@example.com"]
+        self.assertEqual(variant["count"], 3)
+        self.assertEqual(len(variant["positions"]), 3)
+        self.assertEqual(
+            variant["positions"],
+            [
+                {"start": 0, "end": 20},
+                {"start": 30, "end": 50},
+                {"start": 60, "end": 80},
+            ],
+        )
+
     def test_update_group_from_grouped_entities(self):
         """Mettre à jour un groupe issu de get_grouped_entities met à jour les entités."""
 
