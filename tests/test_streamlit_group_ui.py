@@ -230,6 +230,7 @@ def test_delete_action_uses_entity_manager(monkeypatch):
     assert len(em.entities) == 1
     assert em.entities[0]["replacement"] == "[Beta]"
     assert groups == list(em.get_grouped_entities().values())
+    assert st.session_state["entities"] is em.entities
 
 
 def test_filters_types_defaults_to_all(monkeypatch):
@@ -284,4 +285,5 @@ def test_edit_action_updates_type_and_variants(monkeypatch):
     assert set(groups[0]["variants"].keys()) == {"Alice", "Charlie"}
     assert em.entities[0]["type"] == "ORG"
     assert set(em.entities[0]["variants"]) == {"Alice", "Charlie"}
+    assert st.session_state["entities"] is em.entities
     assert "edit_type_Alpha" not in st.session_state
