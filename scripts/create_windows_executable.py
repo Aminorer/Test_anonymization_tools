@@ -107,7 +107,7 @@ def build_windows_executable() -> None:
     command.append(str(ENTRY_POINT))
 
     print("🚀 Lancement de PyInstaller…")
-    subprocess.check_call(command)
+    subprocess.check_call(command, cwd=PROJECT_ROOT)
 
     executable = PROJECT_ROOT / "dist" / f"{EXECUTABLE_NAME}.exe"
     if executable.exists():
