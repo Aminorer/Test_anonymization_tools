@@ -104,9 +104,21 @@ def build_executable() -> None:
     print("🚀 Lancement de PyInstaller…")
     pyinstaller_run(command)
 
-    exe_path = PROJECT_ROOT / "dist" / f"{EXECUTABLE_NAME}.exe"
-    if exe_path.exists():
-        print("✅ Exécutable généré :", exe_path)
+    executable_candidates = []
+    if sys.platform.startswith("win"):
+        executable_candidates.append(PROJECT_ROOT / "dist" / f"{EXECUTABLE_NAME}.exe")
+    else:
+        # ``--onefile`` on Unix platforms produces a binary without an extension.
+        executable_candidates.append(PROJECT_ROOT / "dist" / EXECUTABLE_NAME)
+        # Some PyInstaller configurations may still output ``.exe`` or ``.app``,
+        # so keep these variants as fallbacks.
+        executable_candidates.append(PROJECT_ROOT / "dist" / f"{EXECUTABLE_NAME}.exe")
+        executable_candidates.append(PROJECT_ROOT / "dist" / f"{EXECUTABLE_NAME}.app")
+
+    for candidate in executable_candidates:
+        if candidate.exists():
+            print("✅ Exécutable généré :", candidate)
+            break
     else:
         print("⚠️ PyInstaller ne semble pas avoir produit l'exécutable attendu.")
 
