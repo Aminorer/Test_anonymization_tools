@@ -94,6 +94,12 @@ def build_executable() -> None:
         EXECUTABLE_NAME,
         "--collect-all",
         "streamlit",
+        "--collect-all",
+        "docx",
+        "--collect-all",
+        "pdfplumber",
+        "--collect-all",
+        "pdf2docx",
         "--collect-submodules",
         "src",
     ]
