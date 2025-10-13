@@ -226,9 +226,6 @@ def main():
     # Vérifications préliminaires
     print("\n🔍 VÉRIFICATIONS SYSTÈME:")
     
-    if not check_dependencies():
-        sys.exit(1)
-    
     check_optional_dependencies()
     
     if args.check_only:
@@ -262,4 +259,9 @@ def main():
     run_streamlit(args.host, args.port, args.dev)
 
 if __name__ == "__main__":
+    if is_frozen():
+        print("🔒 Mode exécutable détecté — vérification des dépendances ignorée.")
+    else:
+        if not check_dependencies():
+            sys.exit(1)
     main()
