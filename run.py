@@ -9,7 +9,14 @@ import sys
 import logging
 import argparse
 import subprocess
+import importlib.util
 from pathlib import Path
+
+
+def is_frozen():
+    """Détecter si l'application est exécutée depuis un exécutable PyInstaller."""
+
+    return getattr(sys, "frozen", False)
 
 def setup_logging():
     """Configuration du logging"""
@@ -26,16 +33,20 @@ def _is_module_available(module_names):
     """Retourne True si l'un des modules listés est importable."""
 
     for module_name in module_names:
-        try:
-            __import__(module_name)
+        if importlib.util.find_spec(module_name) is not None:
             return True
-        except ImportError:
-            continue
     return False
 
 
 def check_dependencies():
     """Vérifier les dépendances critiques"""
+
+    if is_frozen():
+        print(
+            "🔒 Exécution dans un exécutable PyInstaller — vérification des dépendances "
+            "critiques désactivée."
+        )
+        return True
 
     required_packages = {
         'streamlit': ['streamlit'],
