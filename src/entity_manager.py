@@ -237,19 +237,15 @@ class EntityManager:
                 aggregated["token"] = manual_token
 
             manual_variants = manual_group.get("manual_variants", {})
-            for value, info in manual_variants.items():
-                entry = aggregated["variants"].setdefault(
-                    value,
-                    {
-                        "value": value,
-                        "count": 0,
-                        "positions": [],
-                    },
-                )
-                if "count" in info:
-                    entry["count"] = info["count"]
-                if "positions" in info:
-                    entry["positions"] = info["positions"]
+            if manual_variants:
+                aggregated["variants"] = {}
+                for value, info in manual_variants.items():
+                    normalized_value = info.get("value", value)
+                    aggregated["variants"][normalized_value] = {
+                        "value": normalized_value,
+                        "count": info.get("count", 0),
+                        "positions": info.get("positions", []),
+                    }
 
         self._grouped_entities_cache = grouped
         return grouped
