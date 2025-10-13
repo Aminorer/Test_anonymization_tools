@@ -27,14 +27,25 @@ Cette application Streamlit permet d'anonymiser automatiquement les documents ju
 
 ## 🚀 **Installation et Démarrage Rapide**
 
-### **1. Prérequis**
+### **1. Installation Windows (script automatique)**
+
+Pour une installation sans manipulation technique sur Windows :
+
+1. Téléchargez l'archive du projet puis extrayez-la (ex : `C:\Anonymiseur`).
+2. Double-cliquez sur `install_and_run.bat`.
+3. Patientez pendant l'installation automatique de Python, la création de l'environnement virtuel et l'installation des dépendances.
+4. L'application s'ouvre dans le navigateur. Les prochains lancements se font via le raccourci « Anonymiseur » sur le bureau ou `run_app.bat`.
+
+> 📄 Un fichier `README_UTILISATEUR.txt` récapitule ces étapes pour vos utilisatrices.
+
+### **2. Prérequis (installation manuelle)**
 ```bash
 Python 3.8+
 4 GB RAM recommandé
 2 GB d'espace disque libre
 ```
 
-### **2. Installation**
+### **3. Installation (macOS / Linux ou configuration manuelle)**
 ```bash
 # Cloner ou créer le projet
 mkdir anonymizer-streamlit
@@ -49,7 +60,7 @@ pip install -r requirements.txt
 pip install -r requirements-full.txt
 ```
 
-### **3. Lancement**
+### **4. Lancement**
 ```bash
 # Démarrage simple
 python run.py
@@ -64,7 +75,7 @@ python run.py --port 8080
 python run.py --check-only
 ```
 
-### **4. Accès**
+### **5. Accès**
 - **Interface** : http://localhost:8501
 - **Auto-ouverture** du navigateur (désactivable avec `--no-browser`)
 

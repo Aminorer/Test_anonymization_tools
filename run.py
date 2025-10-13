@@ -4,19 +4,12 @@ Script de lancement pour l'Anonymiseur de Documents Juridiques
 Usage: python run.py [--dev] [--port PORT] [--host HOST]
 """
 
-import os
 import sys
 import logging
 import argparse
 import subprocess
 import importlib.util
 from pathlib import Path
-
-
-def is_frozen():
-    """Détecter si l'application est exécutée depuis un exécutable PyInstaller."""
-
-    return getattr(sys, "frozen", False)
 
 def setup_logging():
     """Configuration du logging"""
@@ -40,13 +33,6 @@ def _is_module_available(module_names):
 
 def check_dependencies():
     """Vérifier les dépendances critiques"""
-
-    if is_frozen():
-        print(
-            "🔒 Exécution dans un exécutable PyInstaller — vérification des dépendances "
-            "critiques désactivée."
-        )
-        return True
 
     required_packages = {
         'streamlit': ['streamlit'],
@@ -259,9 +245,6 @@ def main():
     run_streamlit(args.host, args.port, args.dev)
 
 if __name__ == "__main__":
-    if is_frozen():
-        print("🔒 Mode exécutable détecté — vérification des dépendances ignorée.")
-    else:
-        if not check_dependencies():
-            sys.exit(1)
+    if not check_dependencies():
+        sys.exit(1)
     main()

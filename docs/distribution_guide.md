@@ -3,7 +3,7 @@
 Ce guide détaille deux scénarios fréquents pour partager l'application :
 
 1. **Alléger le dépôt pour un déploiement sur Streamlit Cloud**.
-2. **Produire un exécutable Windows auto-suffisant pour une utilisation hors-ligne**.
+2. **Fournir un dossier Windows prêt à l'emploi via un script `.bat`.**
 
 Les recommandations ci-dessous s'appuient sur la structure existante du projet (`main.py`, `run.py`, dossier `src/` et dépendances décrites dans `requirements.txt`).
 
@@ -25,69 +25,39 @@ Les ressources suivantes sont uniquement utiles pour le développement local, le
 | `tests/`, `test_installation.py` | Suite de tests automatisés. | Non utilisés en production ; les conserver dans une branche de développement. |
 | `docs/` volumineux (captures, rapports PDF, etc.) | Documentation interne ou historique. | À conserver localement ; n'impacte pas l'app en ligne. |
 | `scripts/`, `setup_and_check.py`, `check_environment.py` | Scripts d'installation avancés pour environnements locaux. | Ne sont pas lancés par Streamlit Cloud, donc inutiles sur la version déployée. |
-| `requirements-full.txt`, `fix_pytorch.bat`, `fix_quick.py` | Dépendances lourdes (PyTorch/Transformers) ou scripts Windows. | Les bibliothèques IA avancées dépassent souvent les limites du Cloud ; gardez-les uniquement pour un usage local. |
+| `requirements-full.txt`, `fix_quick.py` | Dépendances lourdes (PyTorch/Transformers) ou scripts ponctuels. | Les bibliothèques IA avancées dépassent souvent les limites du Cloud ; gardez-les uniquement pour un usage local. |
 
 > 💡 Astuce : créez une branche `streamlit-cloud` allégée qui ne contient que les fichiers nécessaires. Vous pouvez utiliser `git sparse-checkout` ou un workflow GitHub Action pour générer l'archive légère automatiquement.
 
-## 2. Fournir un exécutable Windows autonome
+## 2. Fournir un dossier Windows prêt à l'emploi
 
-Pour une utilisatrice Windows sans Python ni VS Code, vous pouvez produire un exécutable `.exe` qui embarque Python et toutes les dépendances :
+L'approche recommandée pour un public non technique est de livrer l'application accompagnée d'un script d'installation automatique (`install_and_run.bat`). Ce script :
 
-1. **Préparer un environnement propre sur votre machine de développement**
-   ```bash
-   # Facultatif : créer un environnement virtuel
-   python -m venv .venv
-   .venv\\Scripts\\activate
+- vérifie la présence de Python et le télécharge au besoin ;
+- crée un environnement virtuel local (`venv/`) ;
+- installe les dépendances via `requirements.txt` ;
+- crée les dossiers de travail (`temp/`, `logs/`, `exports/`, `data/`);
+- installe un raccourci `Anonymiseur.lnk` sur le bureau ;
+- démarre automatiquement Streamlit.
 
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
+### Étapes côté développeur
 
-2. **Installer PyInstaller** (il crée des exécutables auto-suffisants)
-   ```bash
-   pip install pyinstaller
-   ```
+1. Générer l'archive de distribution (`anonymiseur.zip`) contenant :
+   - `install_and_run.bat` et `run_app.bat` ;
+   - `README_UTILISATEUR.txt` ;
+   - `main.py`, `run.py`, `requirements.txt`, le dossier `src/` et les éventuelles ressources nécessaires (`data/`, `exports/` vides, etc.).
+2. Tester le script sur une machine Windows (ou VM) pour vérifier l'installation automatique.
+3. Envoyer l'archive aux utilisatrices avec un rappel : première ouverture via `install_and_run.bat`, lancements suivants via le raccourci bureau ou `run_app.bat`.
 
-3. **Générer l'exécutable à partir de `run.py`**
-   ```bash
-   pyinstaller run.py \
-     --name AnonymiseurJurique \
-     --onefile \
-     --noconsole \
-     --hidden-import streamlit.web.cli \
-     --collect-all streamlit
-   ```
+### Bonnes pratiques
 
-   - `run.py` orchestre déjà les vérifications, la création des dossiers (`temp/`, `logs/`, `exports/`) et le lancement de Streamlit.【F:run.py†L55-L120】【F:run.py†L200-L230】
-   - Les options `--hidden-import` et `--collect-all` évitent les erreurs de ressources manquantes de Streamlit.
-   - Le binaire généré se trouve dans `dist/AnonymiseurJurique.exe`.
-
-4. **Préparer le dossier à livrer**
-   - Copiez `dist/AnonymiseurJurique.exe` dans un dossier vierge.
-   - Ajoutez un sous-dossier `app/` contenant :
-     - `main.py`.
-     - Le dossier `src/` complet.
-     - Éventuellement un dossier `data/` minimal si vous fournissez des exemples (sinon laissez-le vide : `run.py` le crée).【F:run.py†L70-L120】
-   - Créez un fichier `Lisez-moi.txt` avec les instructions :
-     1. Double-cliquer sur `AnonymiseurJurique.exe`.
-     2. Patienter pendant l'ouverture du navigateur sur `http://localhost:8501`.
-     3. Importer un document et suivre l'interface.
-
-5. **Tester sur une machine Windows vierge** (ou une machine virtuelle) pour vérifier que l'antivirus ne bloque pas le binaire et que les dossiers temporaires se créent correctement.
-
-6. **Distribution**
-   - Compressez le dossier (`AnonymiseurJurique.zip`).
-   - Envoyez-le à l'utilisatrice ; elle n'aura qu'à extraire l'archive et lancer l'exécutable.
-
-### Conseils supplémentaires
-
-- Pour réduire la taille du `.exe`, désactivez les modules IA avancés en retirant `torch` et `transformers` de l'environnement avant d'exécuter PyInstaller ; l'application basculera automatiquement en mode Regex grâce au mécanisme de fallback dans `main.py`.【F:main.py†L41-L64】
-- Si vous souhaitez fournir le mode IA, ajoutez `pip install -r requirements-full.txt` avant PyInstaller, mais prévenez que le binaire dépassera probablement 1 Go.
-- Pensez à signer numériquement l'exécutable pour éviter les alertes SmartScreen.
+- Préparer l'archive depuis un environnement propre pour éviter les fichiers temporaires inutiles.
+- Conserver `requirements-full.txt` à part pour les utilisations avancées (IA) et ne pas l'inclure si la cible ne dispose pas d'une connexion rapide.
+- Mettre à jour le champ de contact dans `README_UTILISATEUR.txt` avant l'envoi.
 
 ## 3. Résumé rapide
 
 - **Streamlit Cloud** : conservez seulement `main.py`, `run.py`, `src/`, `requirements.txt` et les fichiers de configuration indispensables. Supprimez les jeux de données volumineux, les tests et les scripts d'installation avancés.
-- **Utilisateur Windows** : empaquetez `run.py` avec PyInstaller, distribuez le binaire accompagné des sources nécessaires (`main.py`, `src/`). Aucun prérequis n'est nécessaire côté utilisatrice.
+- **Utilisateur Windows** : distribuez l'archive contenant les scripts `.bat`. L'installation est automatique et ne nécessite aucune compilation PyInstaller.
 
-Ces deux approches vous permettent de couvrir la majorité des cas d'usage sans obliger votre utilisatrice à installer Python ou VS Code.
+Ces deux approches couvrent la majorité des cas d'usage sans obliger votre utilisatrice à manipuler PyInstaller ou des outils de packaging complexes.
