@@ -224,6 +224,7 @@ def display_legal_entity_manager(
                 for gid in ids_to_delete:
                     entity_manager.delete_group_by_token(gid)
                 groups[:] = list(entity_manager.get_grouped_entities().values())
+                _sync_session_state_from_manager(entity_manager)
             else:
                 groups[:] = [g for g in groups if g.get("id") not in ids_to_delete]
             st.rerun()
@@ -280,6 +281,7 @@ def display_legal_entity_manager(
                             for gid, data in entity_manager.get_grouped_entities().items()
                         ]
                         groups[:] = updated_groups
+                        _sync_session_state_from_manager(entity_manager)
                     st.session_state["editing_group"] = None
                     _reset_edit_state()
                     st.rerun()
@@ -336,7 +338,22 @@ def display_legal_entity_manager(
                             for tgt in targets:
                                 entity_manager.merge_entity_groups(tgt, final)
                         groups[:] = list(entity_manager.get_grouped_entities().values())
+                        _sync_session_state_from_manager(entity_manager)
                     st.session_state["merge_group"] = None
+                    st.rerun()
                 if st.button(texts["delete_cancel"], key="cancel_merge"):
                     st.session_state["merge_group"] = None
+
+def _sync_session_state_from_manager(entity_manager: Optional[EntityManager]) -> None:
+    """Propagate entity manager changes to Streamlit's session state."""
+
+    if entity_manager is None:
+        return
+
+    # Streamlit's session state behaves like a mutable mapping. Updating via
+    # the dictionary interface ensures the data is available both through
+    # ``st.session_state["entities"]`` and the attribute accessor used in the
+    # rest of the application.
+    st.session_state["entities"] = entity_manager.entities
+    st.session_state["groups"] = entity_manager.groups
 
