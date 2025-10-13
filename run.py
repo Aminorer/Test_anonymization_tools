@@ -22,27 +22,40 @@ def setup_logging():
         ]
     )
 
+def _is_module_available(module_names):
+    """Retourne True si l'un des modules listés est importable."""
+
+    for module_name in module_names:
+        try:
+            __import__(module_name)
+            return True
+        except ImportError:
+            continue
+    return False
+
+
 def check_dependencies():
     """Vérifier les dépendances critiques"""
-    required_packages = [
-        'streamlit',
-        'python-docx',
-        'pdfplumber', 
-        'pdf2docx'
+
+    required_packages = {
+        'streamlit': ['streamlit'],
+        # python-docx est importable via le module "docx"
+        'python-docx': ['docx'],
+        'pdfplumber': ['pdfplumber'],
+        'pdf2docx': ['pdf2docx']
+    }
+
+    missing = [
+        package
+        for package, module_names in required_packages.items()
+        if not _is_module_available(module_names)
     ]
-    
-    missing = []
-    for package in required_packages:
-        try:
-            __import__(package.replace('-', '_'))
-        except ImportError:
-            missing.append(package)
-    
+
     if missing:
         print(f"❌ Dépendances manquantes: {', '.join(missing)}")
         print("📦 Installez avec: pip install -r requirements.txt")
         return False
-    
+
     print("✅ Toutes les dépendances critiques sont installées")
     return True
 
