@@ -24,7 +24,8 @@ OU
 ❓ EN CAS DE PROBLÈME
 --------------------
 1. Vérifiez qu'aucun antivirus ne bloque Python ou Streamlit
-2. Redémarrez l'ordinateur puis relancez "install_and_run.bat"
-3. En cas d'échec de l'installation de Python, relancez le script en tant qu'administrateur (clic droit > Exécuter en tant qu'administrateur)
+2. Consultez le journal détaillé : ouvrir le fichier `logs\install_and_run.log` pour connaître l'étape qui a échoué
+3. Redémarrez l'ordinateur puis relancez "install_and_run.bat"
+4. En cas d'échec de l'installation de Python, relancez le script en tant qu'administrateur (clic droit > Exécuter en tant qu'administrateur)
 
 📧 Support : contact@example.com
