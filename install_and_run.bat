@@ -1,120 +1,192 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 > nul
+REM Forcer l'encodage Windows par defaut (pas UTF-8)
+REM chcp 65001 > nul
 
 REM -----------------------------------------------------------------
-REM  Journalisation des actions pour faciliter le diagnostic
+REM  Script d'installation - Version robuste
 REM -----------------------------------------------------------------
 set "SCRIPT_DIR=%~dp0"
 set "LOG_DIR=%SCRIPT_DIR%logs"
+
+REM Creer le dossier logs en premier
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 set "LOG_FILE=%LOG_DIR%\install_and_run.log"
 
-call :log "════════════════════════════════════════════════════════════"
-call :log "  🛡️ Anonymiseur de Documents - Installation Automatique"
-call :log "════════════════════════════════════════════════════════════"
-call :log "Le journal détaillé est disponible ici : %LOG_FILE%"
+REM Fonction de log simplifiee (pas de caracteres speciaux)
+echo ================================================ > "%LOG_FILE%"
+echo Installation Anonymiseur - %date% %time% >> "%LOG_FILE%"
+echo ================================================ >> "%LOG_FILE%"
+echo. >> "%LOG_FILE%"
+
+echo ================================================
+echo   Installation Anonymiseur de Documents
+echo ================================================
+echo.
+echo Le journal detaille est disponible ici :
+echo %LOG_FILE%
 echo.
 
-REM Vérification de Python
-call :log "🔍 Vérification de l'installation de Python..."
+REM Verification Python
+echo [ETAPE 1/6] Verification de Python...
+echo [%time%] Verification de Python... >> "%LOG_FILE%"
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    call :log "❌ Python n'est pas installé. Téléchargement en cours..."
     echo.
-    powershell -Command "& {Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe' -OutFile 'python_installer.exe'}"
-    call :ensure_success "Téléchargement de Python"
-    call :log "⏳ Installation de Python (cela peut prendre quelques minutes)..."
-    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1
-    call :ensure_success "Installation de Python"
+    echo ERREUR : Python n'est pas installe ou pas dans le PATH
+    echo.
+    echo Telechargement automatique de Python...
+    echo [%time%] Python non trouve - Telechargement... >> "%LOG_FILE%"
+    
+    powershell -Command "& {Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.0/python-3.11.0-amd64.exe' -OutFile 'python_installer.exe'}" 2>> "%LOG_FILE%"
+    if %errorlevel% neq 0 (
+        echo ERREUR lors du telechargement de Python
+        echo Verifiez votre connexion internet
+        echo Details dans : %LOG_FILE%
+        pause
+        exit /b 1
+    )
+    
+    echo Installation de Python en cours (peut prendre 3-5 minutes)...
+    echo [%time%] Installation de Python... >> "%LOG_FILE%"
+    python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 2>> "%LOG_FILE%"
+    if %errorlevel% neq 0 (
+        echo ERREUR lors de l'installation de Python
+        echo Essayez d'installer Python manuellement depuis python.org
+        echo Details dans : %LOG_FILE%
+        pause
+        exit /b 1
+    )
+    
     del python_installer.exe
-    call :log "✅ Python installé avec succès !"
-    call :log "⚠️ Veuillez FERMER cette fenêtre et RELANCER install_and_run.bat"
+    echo.
+    echo Python installe avec succes !
+    echo IMPORTANT : FERMEZ cette fenetre et RELANCEZ install_and_run.bat
+    echo [%time%] Python installe - Relancer necessaire >> "%LOG_FILE%"
     pause
     exit /b 0
 )
 
-for /f "tokens=*" %%i in ('python --version') do set "PYTHON_VERSION=%%i"
-call :log "✅ Python détecté : !PYTHON_VERSION!"
+for /f "tokens=*" %%i in ('python --version 2^>^&1') do set "PYTHON_VERSION=%%i"
+echo OK - %PYTHON_VERSION% detecte
+echo [%time%] Python OK : %PYTHON_VERSION% >> "%LOG_FILE%"
 echo.
 
-REM Création de l'environnement virtuel
+REM Creation environnement virtuel
+echo [ETAPE 2/6] Creation de l'environnement virtuel...
+echo [%time%] Creation venv... >> "%LOG_FILE%"
 if not exist "%SCRIPT_DIR%venv" (
-    call :log "📦 Création de l'environnement virtuel..."
-    python -m venv "%SCRIPT_DIR%venv"
-    call :ensure_success "Création de l'environnement virtuel"
-    call :log "✅ Environnement créé"
+    python -m venv "%SCRIPT_DIR%venv" 2>> "%LOG_FILE%"
+    if %errorlevel% neq 0 (
+        echo ERREUR lors de la creation de l'environnement virtuel
+        echo Details dans : %LOG_FILE%
+        pause
+        exit /b 1
+    )
+    echo OK - Environnement cree
+    echo [%time%] Venv cree >> "%LOG_FILE%"
 ) else (
-    call :log "✅ Environnement virtuel déjà existant"
+    echo OK - Environnement deja existant
+    echo [%time%] Venv existe deja >> "%LOG_FILE%"
 )
 echo.
 
-REM Activation et installation des dépendances
-call :log "📥 Installation des dépendances (cela peut prendre 2-5 minutes)..."
-call "%SCRIPT_DIR%venv\Scripts\activate.bat"
-call :ensure_success "Activation de l'environnement virtuel"
-python -m pip install --upgrade pip
-call :ensure_success "Mise à jour de pip"
-pip install -r "%SCRIPT_DIR%requirements.txt"
-call :ensure_success "Installation des dépendances"
-call :log "✅ Dépendances installées"
+REM Activation et installation
+echo [ETAPE 3/6] Activation de l'environnement...
+echo [%time%] Activation venv... >> "%LOG_FILE%"
+call "%SCRIPT_DIR%venv\Scripts\activate.bat" 2>> "%LOG_FILE%"
+if %errorlevel% neq 0 (
+    echo ERREUR lors de l'activation de l'environnement
+    echo Details dans : %LOG_FILE%
+    pause
+    exit /b 1
+)
+echo OK - Environnement active
+echo [%time%] Venv active >> "%LOG_FILE%"
 echo.
 
-REM Création des dossiers nécessaires
+echo [ETAPE 4/6] Mise a jour de pip...
+echo [%time%] Mise a jour pip... >> "%LOG_FILE%"
+python -m pip install --upgrade pip --quiet 2>> "%LOG_FILE%"
+if %errorlevel% neq 0 (
+    echo AVERTISSEMENT : pip n'a pas pu etre mis a jour
+    echo L'installation continue...
+    echo [%time%] Avertissement pip >> "%LOG_FILE%"
+) else (
+    echo OK - pip mis a jour
+    echo [%time%] pip OK >> "%LOG_FILE%"
+)
+echo.
+
+echo [ETAPE 5/6] Installation des dependances...
+echo Cette etape peut prendre 2-5 minutes selon votre connexion...
+echo [%time%] Installation requirements.txt... >> "%LOG_FILE%"
+pip install -r "%SCRIPT_DIR%requirements.txt" >> "%LOG_FILE%" 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo ERREUR lors de l'installation des dependances
+    echo Verifiez :
+    echo   - Votre connexion internet
+    echo   - Le fichier requirements.txt existe
+    echo   - Les details dans : %LOG_FILE%
+    echo.
+    pause
+    exit /b 1
+)
+echo OK - Dependances installees
+echo [%time%] Requirements OK >> "%LOG_FILE%"
+echo.
+
+REM Creation dossiers
+echo [ETAPE 6/6] Creation des dossiers necessaires...
+echo [%time%] Creation dossiers... >> "%LOG_FILE%"
 for %%d in (temp logs exports data) do (
     if not exist "%SCRIPT_DIR%%%d" (
-        mkdir "%SCRIPT_DIR%%%d"
-        call :log "📁 Dossier %%d créé"
+        mkdir "%SCRIPT_DIR%%%d" 2>> "%LOG_FILE%"
+        echo - Dossier %%d cree
     ) else (
-        call :log "✅ Dossier %%d déjà présent"
+        echo - Dossier %%d deja present
     )
 )
+echo [%time%] Dossiers OK >> "%LOG_FILE%"
 echo.
 
-REM Création du raccourci bureau
-call :log "🖇️ Création d'un raccourci sur le bureau..."
-powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Anonymiseur.lnk'); $Shortcut.TargetPath = '%SCRIPT_DIR%run_app.bat'; $Shortcut.WorkingDirectory = '%SCRIPT_DIR%'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()"
-call :ensure_success "Création du raccourci"
-call :log "✅ Raccourci créé sur le bureau"
-echo.
-
-call :log "════════════════════════════════════════════════════════════"
-call :log "  ✅ INSTALLATION TERMINÉE AVEC SUCCÈS !"
-call :log "════════════════════════════════════════════════════════════"
-call :log "🚀 L'application va démarrer dans 3 secondes..."
-call :log "📌 Un raccourci Anonymiseur a été créé sur votre bureau"
-echo.
-
-timeout /t 3 >nul
-
-REM Lancement de l'application
-call "%SCRIPT_DIR%venv\Scripts\activate.bat"
-call :ensure_success "Activation de l'environnement virtuel"
-start "" http://localhost:8501
-call :log "🌐 Ouverture du navigateur sur http://localhost:8501"
-streamlit run "%SCRIPT_DIR%main.py" --server.headless true --server.port 8501
-call :ensure_success "Lancement de l'application"
-
-call :log "ℹ️ Le script s'est terminé correctement. Fermez cette fenêtre pour quitter."
-pause
-exit /b 0
-
-:ensure_success
-set "last_error=%errorlevel%"
-if not "%last_error%"=="0" (
-    call :log "❌ %~1 (code %last_error%)"
-    echo.
-    echo Une erreur est survenue pendant l'étape : %~1
-    echo Consultez le journal pour plus de détails : %LOG_FILE%
-    pause
-    exit /b %last_error%
+REM Raccourci bureau
+echo Creation du raccourci sur le bureau...
+echo [%time%] Creation raccourci... >> "%LOG_FILE%"
+powershell -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%USERPROFILE%\Desktop\Anonymiseur.lnk'); $Shortcut.TargetPath = '%SCRIPT_DIR%run_app.bat'; $Shortcut.WorkingDirectory = '%SCRIPT_DIR%'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()" 2>> "%LOG_FILE%"
+if %errorlevel% neq 0 (
+    echo AVERTISSEMENT : Raccourci non cree (non bloquant)
+    echo [%time%] Avertissement raccourci >> "%LOG_FILE%"
 ) else (
-    call :log "✅ %~1"
+    echo OK - Raccourci cree sur le bureau
+    echo [%time%] Raccourci OK >> "%LOG_FILE%"
 )
-exit /b 0
+echo.
 
-:log
-set "timestamp=%date% %time%"
-echo [%timestamp%] %~1>>"%LOG_FILE%"
-echo %~1
+echo ================================================
+echo   INSTALLATION TERMINEE AVEC SUCCES !
+echo ================================================
+echo.
+echo L'application va demarrer dans 5 secondes...
+echo Un raccourci "Anonymiseur" a ete cree sur votre bureau.
+echo.
+echo Pour les prochains lancements, utilisez :
+echo   - Le raccourci bureau "Anonymiseur"
+echo   - Ou run_app.bat dans ce dossier
+echo.
+echo [%time%] Installation complete >> "%LOG_FILE%"
+
+timeout /t 5 >nul
+
+REM Lancement
+echo [%time%] Lancement application... >> "%LOG_FILE%"
+call "%SCRIPT_DIR%venv\Scripts\activate.bat"
+start "" http://localhost:8501
+streamlit run "%SCRIPT_DIR%main.py" --server.headless true --server.port 8501 2>> "%LOG_FILE%"
+
+echo.
+echo L'application s'est arretee.
+echo Appuyez sur une touche pour fermer cette fenetre...
+pause >nul
 exit /b 0
